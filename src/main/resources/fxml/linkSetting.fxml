@@ -43,6 +43,6 @@
       <Label layoutX="44.0" layoutY="120.0" text="（最小-最大，支持随机区间）" />
       <CheckBox fx:id="linkUseManualBoardRegion" layoutX="44.0" layoutY="228.0" mnemonicParsing="false" text="启用手工棋盘区域（相对窗口）" />
       <Button layoutX="278.0" layoutY="224.0" mnemonicParsing="false" onAction="#clearManualBoardAreaClick" prefHeight="27.0" prefWidth="120.0" text="清除手工区域" />
-      <Label layoutX="44.0" layoutY="252.0" text="Windows连线时：先点窗口，再在遮罩层拖拽正方形区域，回车确认（仅首次）" />
+      <Label layoutX="44.0" layoutY="252.0" text="Windows连线时：先点窗口，再在遮罩层拖拽框选棋盘区域（可长方形），回车确认（仅首次）" />
    </children>
 </AnchorPane>

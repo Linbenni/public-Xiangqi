@@ -159,7 +159,7 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
                 selection.setStroke(Color.web("#F7D154"));
                 selection.setStrokeWidth(2);
 
-                Label tip = new Label("拖拽选择棋盘正方形区域，回车确认，Esc 取消");
+                Label tip = new Label("拖拽框选棋盘区域（可为长方形），回车确认，Esc 取消");
                 tip.setTextFill(Color.WHITE);
                 tip.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-background-color: rgba(0,0,0,0.45); -fx-padding: 10 16;");
 
@@ -234,36 +234,29 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
         }
     }
 
+    /**
+     * 在目标窗口客户区内更新选框。历史上取 min(|dx|,|dy|) 强制正方形，非正方形棋盘会被裁切；现改为任意轴对齐矩形。
+     */
     private void updateSelection(javafx.scene.shape.Rectangle selection, java.awt.Rectangle windowPos, double anchorX, double anchorY, double currentX, double currentY) {
-        double left = clamp(anchorX, windowPos.x, windowPos.x + windowPos.width);
-        double top = clamp(anchorY, windowPos.y, windowPos.y + windowPos.height);
-        double curX = clamp(currentX, windowPos.x, windowPos.x + windowPos.width);
-        double curY = clamp(currentY, windowPos.y, windowPos.y + windowPos.height);
+        double winL = windowPos.x;
+        double winT = windowPos.y;
+        double winR = windowPos.x + windowPos.width;
+        double winB = windowPos.y + windowPos.height;
 
-        double dx = curX - left;
-        double dy = curY - top;
-        double size = Math.min(Math.max(Math.abs(dx), Math.abs(dy)), Math.min(windowPos.width, windowPos.height));
+        double ax = clamp(anchorX, winL, winR);
+        double ay = clamp(anchorY, winT, winB);
+        double cx = clamp(currentX, winL, winR);
+        double cy = clamp(currentY, winT, winB);
 
-        double x = dx >= 0 ? left : left - size;
-        double y = dy >= 0 ? top : top - size;
+        double left = Math.min(ax, cx);
+        double top = Math.min(ay, cy);
+        double right = Math.max(ax, cx);
+        double bottom = Math.max(ay, cy);
 
-        if (x < windowPos.x) {
-            x = windowPos.x;
-        }
-        if (y < windowPos.y) {
-            y = windowPos.y;
-        }
-        if (x + size > windowPos.x + windowPos.width) {
-            x = windowPos.x + windowPos.width - size;
-        }
-        if (y + size > windowPos.y + windowPos.height) {
-            y = windowPos.y + windowPos.height - size;
-        }
-
-        selection.setX(x);
-        selection.setY(y);
-        selection.setWidth(size);
-        selection.setHeight(size);
+        selection.setX(left);
+        selection.setY(top);
+        selection.setWidth(Math.max(0, right - left));
+        selection.setHeight(Math.max(0, bottom - top));
     }
 
     private double clamp(double value, double min, double max) {

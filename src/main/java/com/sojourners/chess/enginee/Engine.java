@@ -244,6 +244,8 @@ public class Engine {
                             options.put(key, value);
                         }
                     }
+                } catch (IOException e) {
+                    // 协议探测结束时主线程会关闭流，这里安静退出即可。
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -278,6 +280,9 @@ public class Engine {
                 h.interrupt();
             }
             try {
+                if (h != null) {
+                    h.join(200);
+                }
                 if (bw != null) {
                     bw.close();
                 }

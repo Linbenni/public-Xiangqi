@@ -372,6 +372,8 @@ public class Engine {
         }
         if (stopFlag) {
             stopFlag = false;
+            searching = false;
+            cb.searchEndedForTableScore(searchId);
             return;
         }
 

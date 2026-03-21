@@ -188,15 +188,22 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     private volatile int activeSearchPly;
 
     /**
-     * 本次搜索已向棋谱「分数」列提交的最大 depth（普通 cp 分），避免每条 info 都刷同一格。
-     * 绝杀 mate 行不按 depth 节流。
+     * 引擎线程在思考过程中<strong>只更新</strong>此快照，不在 JavaFX 上动态写棋谱「分数」列；
+     * 在 bestmove / searchEndedForTableScore 时由 JavaFX 线程一次性写入，避免“你走棋后才往你那一行跳分”的错位感。
      */
-    private volatile int lastScoreCommitDepth = Integer.MIN_VALUE;
+    private volatile long pendingManualEvalSearchId = -1L;
+    private volatile int pendingManualEvalPly;
+    private volatile Integer pendingManualEvalScore;
+    private volatile Integer pendingManualEvalMate;
 
     /**
-     * 无 depth 的 info 写表时间间隔（纳秒）
+     * 与 {@link #activeSearchPly} 一起在 {@link #beginSearchContext()} 里用<strong>同一次</strong> getP() 赋值，
+     * 避免先写在 goCallBack、后读在 beginSearchContext 造成错位。值为 -1 表示本次搜索不写棋谱分数列（翻谱触发）。
      */
-    private volatile long lastScoreTableWallNanos;
+    private volatile int scoreCommitPlyGate = -1;
+
+    /** 为 true 时，下一次 beginSearchContext 将 scoreCommitPlyGate 置为 -1（browseChessRecord 触发的引擎分析不写表） */
+    private volatile boolean pendingBrowseSkipsManualScore;
 
     /**
      * 变招列表
@@ -455,11 +462,64 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     }
 
     private long beginSearchContext() {
-        this.activeSearchPly = chessManualHandle.getP();
+        int ply = chessManualHandle.getP();
+        boolean skipTableScore = pendingBrowseSkipsManualScore;
+        if (skipTableScore) {
+            pendingBrowseSkipsManualScore = false;
+        }
+        this.activeSearchPly = ply;
+        this.scoreCommitPlyGate = skipTableScore ? -1 : ply;
         this.activeSearchId++;
-        this.lastScoreCommitDepth = Integer.MIN_VALUE;
-        this.lastScoreTableWallNanos = 0L;
+        clearPendingManualTableEvalSnapshot();
         return this.activeSearchId;
+    }
+
+    /** 新搜索开始或提交后清空，避免沿用上轮的 pending 分数 */
+    private void clearPendingManualTableEvalSnapshot() {
+        this.pendingManualEvalSearchId = -1L;
+        this.pendingManualEvalPly = 0;
+        this.pendingManualEvalScore = null;
+        this.pendingManualEvalMate = null;
+    }
+
+    /**
+     * 棋谱「分数」列一次性落表用快照：在引擎线程 {@link #takeAndClearPendingManualEval(long)} 拍下并清空全局槽，
+     * 再由 JavaFX 线程 {@link #applyManualEvalSnapshot(ManualEvalSnapshot)} 写入，避免 runLater 乱序写到已推进的 p。
+     */
+    private record ManualEvalSnapshot(int ply, Integer score, Integer mate) {
+        /** 是否有可提交的引擎分数（开局首步思考时 ply 可能为 0，分数记在落子后的第 1 行） */
+        boolean hasEval() {
+            return score != null || mate != null;
+        }
+    }
+
+    /** 仅在引擎线程调用：取下与 searchId 匹配的 pending 并清空 */
+    private ManualEvalSnapshot takeAndClearPendingManualEval(long searchId) {
+        if (this.pendingManualEvalSearchId != searchId) {
+            return null;
+        }
+        int ply = this.pendingManualEvalPly;
+        Integer sc = this.pendingManualEvalScore;
+        Integer mt = this.pendingManualEvalMate;
+        clearPendingManualTableEvalSnapshot();
+        ManualEvalSnapshot snap = new ManualEvalSnapshot(ply, sc, mt);
+        return snap.hasEval() ? snap : null;
+    }
+
+    private void applyManualEvalSnapshot(ManualEvalSnapshot snap) {
+        // 第 0 行「开始局面」不写引擎分；仅分析时光标在 p>=1 时按行写入
+        if (snap != null && snap.hasEval() && snap.ply >= 1) {
+            chessManualHandle.setScoreBySearchPly(snap.ply, snap.score, snap.mate);
+        }
+    }
+
+    /**
+     * 引擎代走时：思考局面在「走棋前」的光标行 {@code activeSearchPly}，但棋谱上应把该评估记在「刚走出的一行」上（与对手应手后你的那一行对齐）。
+     */
+    private void applyManualEvalToTableRow(ManualEvalSnapshot snap, int tableRowPly) {
+        if (snap != null && snap.hasEval() && tableRowPly >= 1) {
+            chessManualHandle.setScoreBySearchPly(tableRowPly, snap.score, snap.mate);
+        }
     }
 
     @FXML
@@ -482,7 +542,8 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
     }
     private void goCallBack(String move) {
-        // 记录棋谱
+        pendingBrowseSkipsManualScore = false;
+        // 记录棋谱（分数写入行由随后 engineGo→beginSearchContext 与 activeSearchPly 同步快照）
         List<String> nextList = chessManualHandle.boardMove(move, board.translate(move, true));
         board.setManualList(nextList);
         // 趋势图
@@ -966,6 +1027,9 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         // 清空思考状态信息
         this.infoShowLabel.setText("");
         this.activeSearchPly = 0;
+        this.scoreCommitPlyGate = -1;
+        this.pendingBrowseSkipsManualScore = false;
+        clearPendingManualTableEvalSnapshot();
 
         // 库招显示
         doOpenBook();
@@ -1166,24 +1230,53 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         if (searchId != this.activeSearchId) {
             return;
         }
-        if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue()) {
-            ChessBoard.Step s = board.stepForBoard(first);
-            long sid = searchId;
+        // 引擎线程立即拍下分数，再排队 UI；避免思考 info 的 runLater 晚于你走棋后的 goCallBack，把分写到错误行
+        final ManualEvalSnapshot tableSnap = takeAndClearPendingManualEval(searchId);
 
-            Platform.runLater(() -> {
-                if (sid != this.activeSearchId) {
-                    return;
-                }
-                board.move(s.getStart().getX(), s.getStart().getY(), s.getEnd().getX(), s.getEnd().getY());
-                board.setTip(second, null, 1);
+        final boolean robotPlays = redGo && robotRed.getValue() || !redGo && robotBlack.getValue();
+        final ChessBoard.Step robotStep = robotPlays ? board.stepForBoard(first) : null;
+        final long sid = searchId;
+        final ManualEvalSnapshot snap = tableSnap;
+        final boolean doRobot = robotPlays;
+        final String moveFirst = first;
 
-                goCallBack(first);
-            });
-
-            if (linkMode.getValue()) {
-                trickAutoClick(s);
+        Platform.runLater(() -> {
+            if (sid != this.activeSearchId) {
+                return;
             }
+            if (doRobot && moveFirst != null && robotStep != null) {
+                board.move(robotStep.getStart().getX(), robotStep.getStart().getY(), robotStep.getEnd().getX(), robotStep.getEnd().getY());
+                board.setTip(second, null, 1);
+                goCallBack(moveFirst);
+                // 分写在引擎落子后的当前行，避免仍写在对手上一手那一行导致「你走棋后分才跑到你栏上」的错位
+                int rowAfterMove = chessManualHandle.getP();
+                applyManualEvalToTableRow(snap, rowAfterMove);
+                if (snap != null && snap.hasEval() && rowAfterMove < 1) {
+                    System.err.println("[Controller.bestMove] 引擎走后 getP()=" + rowAfterMove + " 异常，未写入棋谱分");
+                }
+            } else {
+                applyManualEvalSnapshot(snap);
+            }
+        });
+
+        if (robotPlays && linkMode.getValue() && robotStep != null) {
+            trickAutoClick(robotStep);
         }
+    }
+
+    @Override
+    public void searchEndedForTableScore(long searchId) {
+        if (searchId != this.activeSearchId) {
+            return;
+        }
+        final ManualEvalSnapshot snap = takeAndClearPendingManualEval(searchId);
+        final long sid = searchId;
+        Platform.runLater(() -> {
+            if (sid != this.activeSearchId) {
+                return;
+            }
+            applyManualEvalSnapshot(snap);
+        });
     }
 
     @Override
@@ -1203,25 +1296,19 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
                 return;
             }
             final boolean wantTableScore = updateScoreCol;
+            final int plyGate = scoreCommitPlyGate;
+            // ply==0 为开局首着思考，仍累积 pending；第 0 行本身不写分，由 bestMove 后写到第 1 行
+            final boolean allowManualScoreCol = wantTableScore && plyGate == scorePly && scorePly >= 0;
+            // 棋谱分数列只在 bestmove / searchEnded 时落表；此处仅在引擎线程滚动更新 pending，避免思考过程动态改表、行错位
+            if (allowManualScoreCol && searchId == this.activeSearchId) {
+                this.pendingManualEvalSearchId = searchId;
+                this.pendingManualEvalPly = scorePly;
+                this.pendingManualEvalScore = td.getScore();
+                this.pendingManualEvalMate = td.getMate();
+            }
             Platform.runLater(() -> {
                 if (sid != this.activeSearchId) {
                     return;
-                }
-                // 在 JavaFX 线程节流，避免引擎线程与 UI 对 lastScoreCommitDepth 竞态
-                boolean commitScoreToTable = wantTableScore;
-                if (commitScoreToTable) {
-                    if (td.getMate() != null) {
-                        // 绝杀行很少，照常更新
-                    } else if (td.getDepth() != null) {
-                        if (td.getDepth() <= lastScoreCommitDepth) {
-                            commitScoreToTable = false;
-                        }
-                    } else {
-                        long now = System.nanoTime();
-                        if (lastScoreTableWallNanos != 0L && now - lastScoreTableWallNanos < 200_000_000L) {
-                            commitScoreToTable = false;
-                        }
-                    }
                 }
                 if (td.getValid()) {
                     listView.getItems().addFirst(td);
@@ -1238,17 +1325,6 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
                     if (td.getDetail() != null && !td.getDetail().isEmpty()) {
                         board.setTip(td.getDetail().get(0), td.getDetail().size() > 1 ? td.getDetail().get(1) : null, td.getPv() != null ? td.getPv() : 1);
-                    }
-                }
-
-                if (commitScoreToTable) {
-                    chessManualHandle.setScoreBySearchPly(scorePly, td.getScore(), td.getMate());
-                    if (td.getMate() == null) {
-                        if (td.getDepth() != null) {
-                            lastScoreCommitDepth = td.getDepth();
-                        } else {
-                            lastScoreTableWallNanos = System.nanoTime();
-                        }
                     }
                 }
             });
@@ -1498,7 +1574,8 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
             robotBlack.setValue(false);
             engineStop();
         } else if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue() || robotAnalysis.getValue()) {
-            // 轮到引擎走棋或者分析模式
+            // 轮到引擎走棋或者分析模式：翻谱触发的搜索不写棋谱分数列（仅在此处设标志，避免未 engineGo 时残留误伤后续分析）
+            pendingBrowseSkipsManualScore = true;
             engineGo();
         } else {
             // 其他情况，停止引擎思考

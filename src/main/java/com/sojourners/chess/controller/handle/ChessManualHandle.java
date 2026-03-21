@@ -465,6 +465,10 @@ public class ChessManualHandle {
     }
 
     public void setScoreBySearchPly(int searchPly, Integer score, Integer mate) {
+        // 第 0 行「开始局面」分数固定为 0，不写入引擎分析值
+        if (searchPly <= 0) {
+            return;
+        }
         int target = resolveScoreIndex(searchPly);
         if (target >= 0) {
             setScoreAt(target, score, mate);
@@ -472,8 +476,9 @@ public class ChessManualHandle {
     }
 
     /**
-     * 引擎分析的是「当前光标」对应局面，分数应写在棋谱第 searchPly 行（与 getP() 一致）。
-     * 旧逻辑在有多步棋谱且 p=0 时错误地写到第 1 行，导致起始局面分析分数不显示或错位。
+     * 将分数写到棋谱表第 {@code searchPly} 行（0 为开始局面）。
+     * 注意：引擎「代走」落子后的目标行由 {@link com.sojourners.chess.controller.Controller} 在 goCallBack 之后用当前 getP() 传入，
+     * 因思考时局面在走子前光标，而棋谱上要把该评估挂在刚走出的一行。
      */
     private int resolveScoreIndex(int searchPly) {
         int size = recordTable.getItems().size();

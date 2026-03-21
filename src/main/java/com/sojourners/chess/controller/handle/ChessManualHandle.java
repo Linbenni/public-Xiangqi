@@ -180,7 +180,11 @@ public class ChessManualHandle {
                         ? cellData.getValue().getCnMove() + "      b"
                         : cellData.getValue().getCnMove()));
         TableColumn<ManualRecord, String> scoreCol = (TableColumn<ManualRecord, String>) recordTable.getColumns().get(2);
-        scoreCol.setCellValueFactory(new PropertyValueFactory<ManualRecord, String>("score"));
+        // 不用 PropertyValueFactory：棋谱行上 setScore 后需可靠刷新「分数」列
+        scoreCol.setCellValueFactory(cd -> {
+            Integer sc = cd.getValue().getScore();
+            return new SimpleStringProperty(sc == null ? "" : String.valueOf(sc));
+        });
         subRecordTable.setCellFactory(lv -> {
             ListCell<ManualRecord> cell = new ListCell<>() {
                 @Override
@@ -467,20 +471,18 @@ public class ChessManualHandle {
         }
     }
 
+    /**
+     * 引擎分析的是「当前光标」对应局面，分数应写在棋谱第 searchPly 行（与 getP() 一致）。
+     * 旧逻辑在有多步棋谱且 p=0 时错误地写到第 1 行，导致起始局面分析分数不显示或错位。
+     */
     private int resolveScoreIndex(int searchPly) {
         int size = recordTable.getItems().size();
         if (size <= 0) {
             return -1;
         }
         int index = searchPly;
-        // 分数写到当前待走方对应的记录行，避免在棋谱打分时出现错位。
-        if (searchPly + 1 < size) {
-            index = searchPly + 1;
-        }
-        // 开局分默认是0；只有存在后续记录时才把引擎分写到下一行。
-        // 当前只有首行时，仍允许把软件分析分展示在首行，避免分数完全不显示。
-        if (index == 0 && size > 1) {
-            return 1;
+        if (index < 0) {
+            index = 0;
         }
         if (index >= size) {
             index = size - 1;
@@ -492,9 +494,14 @@ public class ChessManualHandle {
         if (index < 0 || index >= recordTable.getItems().size()) {
             return;
         }
+        if (mate == null && score == null) {
+            System.err.println("[ChessManualHandle.setScoreAt] score 与 mate 均为 null，index=" + index);
+            return;
+        }
         int s;
         if (mate != null) {
-            s = (score < 0 ? -30000 : 30000) - score;
+            int scVal = score != null ? score : 0;
+            s = (scVal < 0 ? -30000 : 30000) - scVal;
         } else {
             s = score;
         }

@@ -504,6 +504,9 @@ public class ChessBoard {
      * @return
      */
     public String translate(List<String> moveList) {
+        if (moveList == null || moveList.isEmpty()) {
+            return "";
+        }
         for (int i = 0; i < board.length; i++) {
             System.arraycopy(board[i], 0, copyBoard[i], 0, copyBoard[i].length);
         }

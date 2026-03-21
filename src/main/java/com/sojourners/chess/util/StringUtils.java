@@ -2,8 +2,9 @@ package com.sojourners.chess.util;
 
 public class StringUtils {
 
+    /** 引擎 info 中整数，允许可选正负号（含 UCI 偶发的 +123） */
     public static boolean isDigit(String str) {
-        return str.matches("^-?\\d+$");
+        return str != null && str.matches("^[+-]?\\d+$");
     }
 
     public static boolean isEmpty(String str) {

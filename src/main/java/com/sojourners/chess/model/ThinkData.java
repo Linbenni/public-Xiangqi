@@ -34,33 +34,49 @@ public class ThinkData {
     }
 
     public void generate(boolean redGo, boolean isReverse, ChessBoard board) {
-        // 生成title
+        if (pv == null) {
+            pv = 1;
+        }
+        // 无分数则无法参与展示与棋谱列，避免 depth/score 为 null 时拼接出 "null" 或 NPE
+        if (score == null && mate == null) {
+            title = "（引擎未返回分数）";
+            body = "";
+            isValid = false;
+            return;
+        }
+
         StringBuilder sb = new StringBuilder();
-        sb.append("深度: ").append(depth).append("  ");
-        if (pv == null) pv = 1;
+        sb.append("深度: ").append(depth != null ? depth : "—").append("  ");
         sb.append("PV: ").append(pv).append("  ");
-        boolean f = false;
+        boolean mateLine = false;
         if (score == null) {
             sb.append("绝杀: ");
             score = mate;
-            f = true;
+            mateLine = true;
         } else {
             sb.append("分数: ");
-            score = score;
         }
         if (redGo && isReverse || !redGo && !isReverse) {
             score = -score;
         }
-        sb.append(score).append(f ? "步  " : "  ");
-        if (nps == null) nps = 0L;
+        sb.append(score).append(mateLine ? "步  " : "  ");
+        if (nps == null) {
+            nps = 0L;
+        }
         sb.append("NPS: ").append(nps / 1000).append("K  ");
-        if (time == null) time = 0L;
+        if (time == null) {
+            time = 0L;
+        }
         sb.append("时间: ").append(String.format("%.1fs", time / 1000D));
         title = sb.toString();
-        // 生成body
-        body = board.translate(detail);
-        // 是否有效（处理分析模式下null数据）
-        isValid = !body.contains("null");
+
+        if (detail == null || detail.isEmpty()) {
+            body = "";
+        } else {
+            body = board.translate(detail);
+        }
+        // 有 PV 文本但解析失败时不刷思考列表，仍允许仅更新棋谱分数（由 Controller 处理）
+        isValid = body.isEmpty() || !body.contains("null");
     }
 
     public Boolean getValid() {

@@ -78,6 +78,8 @@ public class Engine {
         }
         List<String> command = buildCommand(ec.getCommand());
         ProcessBuilder pb = new ProcessBuilder(command);
+        // Python/uv 等常把日志打到 stderr，与协议探测 testCommand 行为一致，避免读不到 uciok / info
+        pb.redirectErrorStream(true);
         File workDir = resolveWorkDir(ec.getWorkDir(), command);
         if (workDir != null) {
             pb.directory(workDir);
@@ -95,7 +97,7 @@ public class Engine {
                         readyLatch.countDown();
                         continue;
                     }
-                    if (line.contains("depth") || line.contains("nps")) {
+                    if (isThinkInfoLine(line)) {
                         thinkDetail(line);
                     } else if (line.contains("bestmove")) {
                         bestMove(line);
@@ -119,6 +121,23 @@ public class Engine {
 
     public int getMultiPV() {
         return multiPV;
+    }
+
+    /**
+     * 与思考相关的 info 行：需包含分数时即使没有 pv 也要解析，否则棋谱「分数」列不会更新。
+     */
+    private static boolean isThinkInfoLine(String line) {
+        if (line == null) {
+            return false;
+        }
+        String t = line.trim();
+        // UCI/UCCI 均为 info 前缀；个别引擎输出大写 INFO
+        if (!t.toLowerCase(Locale.ROOT).startsWith("info")) {
+            return false;
+        }
+        String u = t.toLowerCase(Locale.ROOT);
+        return u.contains("depth") || u.contains("nps") || u.contains("score") || u.contains(" pv")
+                || u.contains("multipv") || u.contains("nodes");
     }
 
     private static List<String> splitArgs(String args) {
@@ -163,6 +182,16 @@ public class Engine {
             res.add(sb.toString());
         }
         return res;
+    }
+
+    /**
+     * 将完整启动命令拆成与 ProcessBuilder 一致的参数列表（供「启动文件 + 参数」界面使用）。
+     */
+    public static List<String> parseCommandLine(String command) {
+        if (StringUtils.isEmpty(command)) {
+            return new ArrayList<>();
+        }
+        return splitArgs(command.trim());
     }
 
     private static List<String> buildCommand(String command) {
@@ -232,7 +261,8 @@ public class Engine {
                 try {
                     String line;
                     while ((line = finalBr.readLine()) != null) {
-                        if ("uciok".equals(line) || "ucciok".equals(line) ) {
+                        String trimmed = line.trim();
+                        if ("uciok".equals(trimmed) || "ucciok".equals(trimmed)) {
                             f.set(true);
                         }
                         if (line.startsWith("option") && line.contains("name") && line.contains("type") && line.contains("default")
@@ -252,25 +282,31 @@ public class Engine {
             })).start();
 
             if (!writeProbeCommand(bw, p, "uci")) {
+                System.err.println("[Engine.testCommand] 无法写入 uci 探测命令，进程存活=" + (p != null && p.isAlive()));
                 return null;
             }
-            Thread.sleep(1000);
-            if (f.get()) {
+            // uv run / python 冷启动常超过 1s，轮询等待 uciok
+            if (waitForProbeOk(f, 25_000)) {
                 return "uci";
             }
+            System.err.println("[Engine.testCommand] 在超时内未收到 uciok，将尝试 ucci。命令=" + commandText);
 
+            f.set(false);
             if (!writeProbeCommand(bw, p, "ucci")) {
+                System.err.println("[Engine.testCommand] 无法写入 ucci 探测命令");
                 return null;
             }
-            Thread.sleep(1000);
-            if (f.get()) {
+            if (waitForProbeOk(f, 25_000)) {
                 return "ucci";
             }
+            System.err.println("[Engine.testCommand] 协议探测失败：未收到 uciok/ucciok。请检查 PATH、工作目录与命令。退出值="
+                    + (p.isAlive() ? "进程仍运行" : String.valueOf(p.exitValue())));
 
             return null;
 
         } catch (Exception e) {
             e.printStackTrace();
+            System.err.println("[Engine.testCommand] 异常: " + e.getMessage());
             return null;
         } finally {
             if (p != null) {
@@ -302,6 +338,18 @@ public class Engine {
         bw.write(command + System.lineSeparator());
         bw.flush();
         return true;
+    }
+
+    /** 等待引擎返回 uciok / ucciok（由读线程将 f 置 true） */
+    private static boolean waitForProbeOk(AtomicBoolean f, long maxWaitMs) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(maxWaitMs);
+        while (System.nanoTime() < deadline) {
+            if (f.get()) {
+                return true;
+            }
+            Thread.sleep(50);
+        }
+        return f.get();
     }
 
     private boolean validateMove(String move) {
@@ -344,7 +392,7 @@ public class Engine {
         }
 
         long searchId = this.activeSearchId;
-        String[] str = msg.split(" ");
+        String[] str = msg.trim().split("\\s+");
         ThinkData td = new ThinkData();
         List<String> detail = new ArrayList<>();
         td.setDetail(detail);
@@ -355,23 +403,24 @@ public class Engine {
                     detail.add(str[i]);
                 } else {
                     if (StringUtils.isDigit(str[i])) {
+                        String num = str[i].replace("+", "");
                         if (flag == 1) {
-                            td.setNps(Long.parseLong(str[i]));
+                            td.setNps(Long.parseLong(num));
 
                         } else if (flag == 2) {
-                            td.setTime(Long.parseLong(str[i]));
+                            td.setTime(Long.parseLong(num));
 
                         } else if (flag == 3) {
-                            td.setDepth(Integer.parseInt(str[i]));
+                            td.setDepth(Integer.parseInt(num));
 
                         } else if (flag == 4) {
-                            td.setMate(Integer.parseInt(str[i]));
+                            td.setMate(Integer.parseInt(num));
 
                         } else if (flag == 5) {
-                            td.setScore(Integer.parseInt(str[i]));
+                            td.setScore(Integer.parseInt(num));
 
                         } else if (flag == 7) {
-                            td.setPv(Integer.parseInt(str[i]));
+                            td.setPv(Integer.parseInt(num));
                         }
                         flag = 0;
                     } else {
@@ -382,6 +431,9 @@ public class Engine {
                 if ("depth".equals(str[i])) {
                     flag = 3;
                 } else if ("score".equals(str[i])) {
+                    if (i + 1 >= str.length) {
+                        continue;
+                    }
                     if ("mate".equals(str[i + 1])) {
                         flag = 4;
                     } else {
@@ -411,7 +463,9 @@ public class Engine {
             this.time = td.getTime();
         }
 
-        if (td.getDetail().size() > 0) {
+        boolean hasPvMoves = td.getDetail() != null && !td.getDetail().isEmpty();
+        boolean hasEval = td.getScore() != null || td.getMate() != null;
+        if (hasPvMoves || hasEval) {
             cb.thinkDetail(td, searchId);
         }
     }

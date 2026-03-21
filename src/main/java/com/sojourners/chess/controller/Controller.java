@@ -188,6 +188,17 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     private volatile int activeSearchPly;
 
     /**
+     * 本次搜索已向棋谱「分数」列提交的最大 depth（普通 cp 分），避免每条 info 都刷同一格。
+     * 绝杀 mate 行不按 depth 节流。
+     */
+    private volatile int lastScoreCommitDepth = Integer.MIN_VALUE;
+
+    /**
+     * 无 depth 的 info 写表时间间隔（纳秒）
+     */
+    private volatile long lastScoreTableWallNanos;
+
+    /**
      * 变招列表
      */
     private List<String> tacticList;
@@ -446,6 +457,8 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     private long beginSearchContext() {
         this.activeSearchPly = chessManualHandle.getP();
         this.activeSearchId++;
+        this.lastScoreCommitDepth = Integer.MIN_VALUE;
+        this.lastScoreTableWallNanos = 0L;
         return this.activeSearchId;
     }
 
@@ -1180,9 +1193,37 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         }
         if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue() || robotAnalysis.getValue()) {
             td.generate(redGo, isReverse.getValue(), board);
-            if (td.getValid()) {
-                int scorePly = this.activeSearchPly;
-                Platform.runLater(() -> {
+            final int scorePly = this.activeSearchPly;
+            final long sid = searchId;
+            // 无 multipv 时 pv 可能始终为 null，仍应按第一路更新棋谱「分数」列
+            boolean primaryPv = td.getPv() == null || td.getPv() == 1;
+            boolean hasEval = td.getScore() != null || td.getMate() != null;
+            boolean updateScoreCol = primaryPv && hasEval;
+            if (!td.getValid() && !updateScoreCol) {
+                return;
+            }
+            final boolean wantTableScore = updateScoreCol;
+            Platform.runLater(() -> {
+                if (sid != this.activeSearchId) {
+                    return;
+                }
+                // 在 JavaFX 线程节流，避免引擎线程与 UI 对 lastScoreCommitDepth 竞态
+                boolean commitScoreToTable = wantTableScore;
+                if (commitScoreToTable) {
+                    if (td.getMate() != null) {
+                        // 绝杀行很少，照常更新
+                    } else if (td.getDepth() != null) {
+                        if (td.getDepth() <= lastScoreCommitDepth) {
+                            commitScoreToTable = false;
+                        }
+                    } else {
+                        long now = System.nanoTime();
+                        if (lastScoreTableWallNanos != 0L && now - lastScoreTableWallNanos < 200_000_000L) {
+                            commitScoreToTable = false;
+                        }
+                    }
+                }
+                if (td.getValid()) {
                     listView.getItems().addFirst(td);
                     if (listView.getItems().size() > 128) {
                         listView.getItems().removeLast();
@@ -1190,17 +1231,27 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
                     if (prop.isLinkShowInfo()) {
                         infoShowLabel.setText(td.getTitle() + " | " + td.getBody());
-                        infoShowLabel.setTextFill(td.getScore() >= 0 ? Color.BLUE : Color.RED);
+                        Integer sc = td.getScore();
+                        infoShowLabel.setTextFill(sc != null && sc >= 0 ? Color.BLUE : Color.RED);
                         timeShowLabel.setText(prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_TIME ? "固定时间" + prop.getAnalysisValue() / 1000d + "s" : "固定深度" + prop.getAnalysisValue() + "层");
                     }
 
-                    board.setTip(td.getDetail().get(0), td.getDetail().size() > 1 ? td.getDetail().get(1) : null, td.getPv());
-
-                    if (td.getPv() == 1) {
-                        chessManualHandle.setScoreBySearchPly(scorePly, td.getScore(), td.getMate());
+                    if (td.getDetail() != null && !td.getDetail().isEmpty()) {
+                        board.setTip(td.getDetail().get(0), td.getDetail().size() > 1 ? td.getDetail().get(1) : null, td.getPv() != null ? td.getPv() : 1);
                     }
-                });
-            }
+                }
+
+                if (commitScoreToTable) {
+                    chessManualHandle.setScoreBySearchPly(scorePly, td.getScore(), td.getMate());
+                    if (td.getMate() == null) {
+                        if (td.getDepth() != null) {
+                            lastScoreCommitDepth = td.getDepth();
+                        } else {
+                            lastScoreTableWallNanos = System.nanoTime();
+                        }
+                    }
+                }
+            });
         }
     }
 

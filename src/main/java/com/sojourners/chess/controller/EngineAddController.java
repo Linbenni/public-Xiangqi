@@ -18,6 +18,7 @@ import javafx.util.Callback;
 
 import java.io.File;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class EngineAddController {
@@ -26,16 +27,16 @@ public class EngineAddController {
     private Properties prop;
 
     @FXML
-    private TextField workDirText;
-
-    @FXML
     private TextField nameText;
 
     @FXML
     private TextField protocolText;
 
     @FXML
-    private TextField commandText;
+    private TextField executableText;
+
+    @FXML
+    private TextField argsText;
 
     @FXML
     private ListView<Map.Entry<String, String>> optionsListView;
@@ -44,37 +45,71 @@ public class EngineAddController {
 
     private LinkedHashMap<String, String> options;
 
-    @FXML
-    void selectWorkDirClick(ActionEvent e) {
-        javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
-        File init = workDirText.getText() == null || workDirText.getText().isBlank() ? null : new File(workDirText.getText().trim());
-        if (init != null && init.exists() && init.isDirectory()) {
-            chooser.setInitialDirectory(init);
+    /** 若参数内含空格，与命令行一致加引号，便于再拼回一条 command */
+    private static String quoteToken(String t) {
+        if (t == null || t.isEmpty()) {
+            return "\"\"";
         }
-        File file = chooser.showDialog(App.getEngineAdd());
-        if (file != null) {
-            workDirText.setText(file.getAbsolutePath());
+        if (t.indexOf(' ') < 0 && t.indexOf('\t') < 0) {
+            return t;
         }
+        return "\"" + t.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    /** 从已保存的 command 拆到「启动文件」「参数」两框 */
+    private void loadCommandIntoFields(String storedCommand) {
+        List<String> parts = Engine.parseCommandLine(storedCommand);
+        if (parts.isEmpty()) {
+            executableText.clear();
+            argsText.clear();
+            return;
+        }
+        executableText.setText(quoteToken(parts.get(0)));
+        if (parts.size() == 1) {
+            argsText.clear();
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i < parts.size(); i++) {
+            if (i > 1) {
+                sb.append(' ');
+            }
+            sb.append(quoteToken(parts.get(i)));
+        }
+        argsText.setText(sb.toString());
+    }
+
+    /** 合并为持久化的完整启动命令；工作目录不再由用户填写，由引擎侧根据可执行文件路径推断 */
+    private String buildFullCommand() {
+        String exe = executableText.getText() == null ? "" : executableText.getText().trim();
+        String args = argsText.getText() == null ? "" : argsText.getText().trim();
+        if (exe.isEmpty()) {
+            return "";
+        }
+        if (args.isEmpty()) {
+            return exe;
+        }
+        return exe + " " + args;
     }
 
     @FXML
-    void selectCommandClick(ActionEvent e) {
+    void selectExecutableClick(ActionEvent e) {
         FileChooser fileChooser = new FileChooser();
-        File init = workDirText.getText() == null || workDirText.getText().isBlank() ? null : new File(workDirText.getText().trim());
-        if (init != null && init.exists() && init.isDirectory()) {
-            fileChooser.setInitialDirectory(init);
+        String cur = executableText.getText() == null ? "" : executableText.getText().trim();
+        List<String> toks = Engine.parseCommandLine(cur);
+        if (!toks.isEmpty()) {
+            File f = new File(toks.get(0));
+            File par = f.getParentFile();
+            if (par != null && par.isDirectory()) {
+                fileChooser.setInitialDirectory(par);
+            }
         }
         File file = fileChooser.showOpenDialog(App.getEngineAdd());
         if (file != null) {
-            commandText.setText(file.getAbsolutePath());
+            String path = file.getAbsolutePath();
+            executableText.setText(quoteToken(path));
             if (nameText.getText() == null || nameText.getText().isBlank()) {
                 nameText.setText(file.getName());
-            }
-            if (workDirText.getText() == null || workDirText.getText().isBlank()) {
-                File parent = file.getParentFile();
-                if (parent != null) {
-                    workDirText.setText(parent.getAbsolutePath());
-                }
             }
             detectEngineProtocol();
         }
@@ -86,21 +121,21 @@ public class EngineAddController {
     }
 
     private void detectEngineProtocol() {
-        String workDir = workDirText.getText() == null ? "" : workDirText.getText().trim();
-        String command = commandText.getText() == null ? "" : commandText.getText().trim();
+        String command = buildFullCommand();
         if (command.isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.WARNING);
             alert.setTitle("提示");
-            alert.setHeaderText("请先填写执行命令");
+            alert.setHeaderText("请先选择启动文件（可再填写参数）");
             alert.showAndWait();
             return;
         }
-        String protocol = Engine.testCommand(command, workDir, options = new LinkedHashMap<>());
+        String protocol = Engine.testCommand(command, "", options = new LinkedHashMap<>());
         if (protocol == null) {
             Alert alert = new Alert(Alert.AlertType.ERROR);
             alert.setTitle("提示");
-            alert.setHeaderText("无效的引擎启动命令");
+            alert.setHeaderText("无效的引擎启动命令（请检查路径、参数与 PATH）");
             alert.showAndWait();
+            System.err.println("[EngineAdd] 检测失败 command=" + command);
             return;
         }
         protocolText.setText(protocol);
@@ -129,16 +164,22 @@ public class EngineAddController {
             alert.showAndWait();
             return;
         }
-        String workDir = workDirText.getText() == null ? "" : workDirText.getText().trim();
-        String command = commandText.getText() == null ? "" : commandText.getText().trim();
+        String command = buildFullCommand();
+        if (command.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("提示");
+            alert.setHeaderText("请先选择启动文件");
+            alert.showAndWait();
+            return;
+        }
         if (options == null) {
             options = new LinkedHashMap<>();
         }
         if (ec == null) {
-            prop.getEngineConfigList().add(new EngineConfig(nameText.getText(), workDir, command, protocolText.getText(), options));
+            prop.getEngineConfigList().add(new EngineConfig(nameText.getText(), "", command, protocolText.getText(), options));
         } else {
             ec.setName(nameText.getText());
-            ec.setWorkDir(workDir);
+            ec.setWorkDir("");
             ec.setCommand(command);
             ec.setProtocol(protocolText.getText());
             ec.setOptions(options);
@@ -153,8 +194,7 @@ public class EngineAddController {
 
         if (ec != null) {
             nameText.setText(ec.getName());
-            workDirText.setText(ec.getWorkDir());
-            commandText.setText(ec.getCommand());
+            loadCommandIntoFields(ec.getCommand());
             protocolText.setText(ec.getProtocol());
 
             this.options = ec.getOptions() == null ? new LinkedHashMap<>() : (LinkedHashMap<String, String>) ec.getOptions().clone();

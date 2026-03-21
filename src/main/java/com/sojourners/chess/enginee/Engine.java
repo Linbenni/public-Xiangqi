@@ -127,20 +127,18 @@ public class Engine {
             return res;
         }
         StringBuilder sb = new StringBuilder();
-        boolean escaped = false;
         char quote = 0;
         for (int i = 0; i < args.length(); i++) {
             char c = args.charAt(i);
-            if (escaped) {
-                sb.append(c);
-                escaped = false;
-                continue;
-            }
-            if (c == '\\') {
-                escaped = true;
-                continue;
-            }
             if (quote != 0) {
+                if (c == '\\' && i + 1 < args.length()) {
+                    char next = args.charAt(i + 1);
+                    if (next == quote || next == '\\') {
+                        sb.append(next);
+                        i++;
+                        continue;
+                    }
+                }
                 if (c == quote) {
                     quote = 0;
                 } else {
@@ -160,9 +158,6 @@ public class Engine {
                 continue;
             }
             sb.append(c);
-        }
-        if (escaped) {
-            sb.append('\\');
         }
         if (!sb.isEmpty()) {
             res.add(sb.toString());

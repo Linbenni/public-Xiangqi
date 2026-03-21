@@ -4,7 +4,6 @@ import com.sojourners.chess.App;
 import com.sojourners.chess.config.Properties;
 import com.sojourners.chess.enginee.Engine;
 import com.sojourners.chess.model.EngineConfig;
-import com.sojourners.chess.util.PathUtils;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
@@ -27,13 +26,16 @@ public class EngineAddController {
     private Properties prop;
 
     @FXML
-    private TextField pathText;
+    private TextField workDirText;
 
     @FXML
     private TextField nameText;
 
     @FXML
     private TextField protocolText;
+
+    @FXML
+    private TextField commandText;
 
     @FXML
     private ListView<Map.Entry<String, String>> optionsListView;
@@ -43,22 +45,66 @@ public class EngineAddController {
     private LinkedHashMap<String, String> options;
 
     @FXML
-    void selectButtonClick(ActionEvent e) {
+    void selectWorkDirClick(ActionEvent e) {
+        javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
+        File init = workDirText.getText() == null || workDirText.getText().isBlank() ? null : new File(workDirText.getText().trim());
+        if (init != null && init.exists() && init.isDirectory()) {
+            chooser.setInitialDirectory(init);
+        }
+        File file = chooser.showDialog(App.getEngineAdd());
+        if (file != null) {
+            workDirText.setText(file.getAbsolutePath());
+        }
+    }
+
+    @FXML
+    void selectCommandClick(ActionEvent e) {
         FileChooser fileChooser = new FileChooser();
-        fileChooser.setInitialDirectory(new File(PathUtils.getJarPath()));
+        File init = workDirText.getText() == null || workDirText.getText().isBlank() ? null : new File(workDirText.getText().trim());
+        if (init != null && init.exists() && init.isDirectory()) {
+            fileChooser.setInitialDirectory(init);
+        }
         File file = fileChooser.showOpenDialog(App.getEngineAdd());
         if (file != null) {
-            pathText.setText(file.getPath());
-            nameText.setText(file.getName());
-            String protocol = Engine.test(file.getPath(), options = new LinkedHashMap<>());
-            if (protocol == null) {
-                Alert alert = new Alert(Alert.AlertType.ERROR);
-                alert.setTitle("提示");
-                alert.setHeaderText("无效的引擎文件");
+            commandText.setText(file.getAbsolutePath());
+            if (nameText.getText() == null || nameText.getText().isBlank()) {
+                nameText.setText(file.getName());
             }
-            protocolText.setText(protocol);
-            showOptions();
+            if (workDirText.getText() == null || workDirText.getText().isBlank()) {
+                File parent = file.getParentFile();
+                if (parent != null) {
+                    workDirText.setText(parent.getAbsolutePath());
+                }
+            }
+            detectEngineProtocol();
         }
+    }
+
+    @FXML
+    void detectButtonClick(ActionEvent e) {
+        detectEngineProtocol();
+    }
+
+    private void detectEngineProtocol() {
+        String workDir = workDirText.getText() == null ? "" : workDirText.getText().trim();
+        String command = commandText.getText() == null ? "" : commandText.getText().trim();
+        if (command.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("提示");
+            alert.setHeaderText("请先填写执行命令");
+            alert.showAndWait();
+            return;
+        }
+        String protocol = Engine.testCommand(command, workDir, options = new LinkedHashMap<>());
+        if (protocol == null) {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("提示");
+            alert.setHeaderText("无效的引擎启动命令");
+            alert.showAndWait();
+            return;
+        }
+        protocolText.setText(protocol);
+        showOptions();
     }
 
     private void showOptions() {
@@ -80,15 +126,20 @@ public class EngineAddController {
             Alert alert = new Alert(Alert.AlertType.ERROR);
             alert.setTitle("提示");
             alert.setHeaderText("引擎协议不正确");
+            alert.showAndWait();
             return;
         }
+        String workDir = workDirText.getText() == null ? "" : workDirText.getText().trim();
+        String command = commandText.getText() == null ? "" : commandText.getText().trim();
+        if (options == null) {
+            options = new LinkedHashMap<>();
+        }
         if (ec == null) {
-            // 添加引擎
-            prop.getEngineConfigList().add(new EngineConfig(nameText.getText(), pathText.getText(), protocolText.getText(), options));
+            prop.getEngineConfigList().add(new EngineConfig(nameText.getText(), workDir, command, protocolText.getText(), options));
         } else {
-            // 编辑引擎
             ec.setName(nameText.getText());
-            ec.setPath(pathText.getText());
+            ec.setWorkDir(workDir);
+            ec.setCommand(command);
             ec.setProtocol(protocolText.getText());
             ec.setOptions(options);
         }
@@ -102,11 +153,14 @@ public class EngineAddController {
 
         if (ec != null) {
             nameText.setText(ec.getName());
-            pathText.setText(ec.getPath());
+            workDirText.setText(ec.getWorkDir());
+            commandText.setText(ec.getCommand());
             protocolText.setText(ec.getProtocol());
 
-            this.options = (LinkedHashMap<String, String>) ec.getOptions().clone();
+            this.options = ec.getOptions() == null ? new LinkedHashMap<>() : (LinkedHashMap<String, String>) ec.getOptions().clone();
             showOptions();
+        } else {
+            this.options = new LinkedHashMap<>();
         }
     }
 

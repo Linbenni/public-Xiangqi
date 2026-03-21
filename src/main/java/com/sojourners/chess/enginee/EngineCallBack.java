@@ -11,9 +11,9 @@ import java.util.List;
  */
 public interface EngineCallBack {
 
-    void bestMove(String first, String second);
+    void bestMove(String first, String second, long searchId);
 
-    void thinkDetail(ThinkData td);
+    void thinkDetail(ThinkData td, long searchId);
 
     void showBookResults(List<BookData> list);
 }

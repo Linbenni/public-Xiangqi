@@ -6,13 +6,14 @@ import com.sojourners.chess.model.BookData;
 import com.sojourners.chess.model.EngineConfig;
 import com.sojourners.chess.model.ThinkData;
 import com.sojourners.chess.openbook.OpenBookManager;
-import com.sojourners.chess.util.PathUtils;
 import com.sojourners.chess.util.StringUtils;
 
 import java.io.*;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 引擎封装
@@ -46,9 +47,16 @@ public class Engine {
 
     private Thread thread;
 
+    private final Object cmdLock = new Object();
+    private final Object analysisLock = new Object();
+
     private Random random;
 
     private int multiPV;
+
+    private volatile long activeSearchId;
+    private volatile boolean searching;
+    private volatile CountDownLatch readyLatch;
 
     public enum AnalysisModel {
         FIXED_TIME,
@@ -68,8 +76,13 @@ public class Engine {
         } else {
             multiPV = 1;
         }
-
-        process = Runtime.getRuntime().exec(ec.getPath(), null, PathUtils.getParentDir(ec.getPath()));
+        List<String> command = buildCommand(ec.getCommand());
+        ProcessBuilder pb = new ProcessBuilder(command);
+        File workDir = resolveWorkDir(ec.getWorkDir(), command);
+        if (workDir != null) {
+            pb.directory(workDir);
+        }
+        process = pb.start();
         reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
         writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
 
@@ -78,6 +91,10 @@ public class Engine {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     System.out.println(line);
+                    if ("readyok".equals(line.trim()) && readyLatch != null) {
+                        readyLatch.countDown();
+                        continue;
+                    }
                     if (line.contains("depth") || line.contains("nps")) {
                         thinkDetail(line);
                     } else if (line.contains("bestmove")) {
@@ -104,6 +121,83 @@ public class Engine {
         return multiPV;
     }
 
+    private static List<String> splitArgs(String args) {
+        List<String> res = new ArrayList<>();
+        if (StringUtils.isEmpty(args)) {
+            return res;
+        }
+        StringBuilder sb = new StringBuilder();
+        boolean escaped = false;
+        char quote = 0;
+        for (int i = 0; i < args.length(); i++) {
+            char c = args.charAt(i);
+            if (escaped) {
+                sb.append(c);
+                escaped = false;
+                continue;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (quote != 0) {
+                if (c == quote) {
+                    quote = 0;
+                } else {
+                    sb.append(c);
+                }
+                continue;
+            }
+            if (c == '\'' || c == '"') {
+                quote = c;
+                continue;
+            }
+            if (Character.isWhitespace(c)) {
+                if (!sb.isEmpty()) {
+                    res.add(sb.toString());
+                    sb.setLength(0);
+                }
+                continue;
+            }
+            sb.append(c);
+        }
+        if (escaped) {
+            sb.append('\\');
+        }
+        if (!sb.isEmpty()) {
+            res.add(sb.toString());
+        }
+        return res;
+    }
+
+    private static List<String> buildCommand(String command) {
+        if (StringUtils.isEmpty(command)) {
+            throw new IllegalArgumentException("engine command is empty");
+        }
+        return splitArgs(command.trim());
+    }
+
+    private static File resolveWorkDir(String workDir, List<String> command) {
+        if (StringUtils.isNotEmpty(workDir)) {
+            File dir = new File(workDir);
+            if (dir.exists() && dir.isDirectory()) {
+                return dir;
+            }
+        }
+        for (String item : command) {
+            File f = new File(item);
+            if (f.exists()) {
+                if (f.isDirectory()) {
+                    return f;
+                }
+                if (f.getParentFile() != null) {
+                    return f.getParentFile();
+                }
+            }
+        }
+        return null;
+    }
+
     private void sleep(long t) {
         try {
             Thread.sleep(t);
@@ -113,12 +207,26 @@ public class Engine {
     }
 
     public static String test(String filePath, LinkedHashMap<String, String> options) {
+        return test(filePath, "", options);
+    }
+
+    public static String test(String filePath, String args, LinkedHashMap<String, String> options) {
+        return testCommand(StringUtils.isEmpty(args) ? filePath : filePath + " " + args, "", options);
+    }
+
+    public static String testCommand(String commandText, String workDir, LinkedHashMap<String, String> options) {
         Process p = null;
         Thread h = null;
         BufferedWriter bw = null;
         BufferedReader br = null;
         try {
-            p = Runtime.getRuntime().exec(filePath);
+            List<String> command = buildCommand(commandText);
+            ProcessBuilder pb = new ProcessBuilder(command);
+            File resolvedWorkDir = resolveWorkDir(workDir, command);
+            if (resolvedWorkDir != null) {
+                pb.directory(resolvedWorkDir);
+            }
+            p = pb.start();
             bw = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
             br = new BufferedReader(new InputStreamReader(p.getInputStream()));
 
@@ -168,7 +276,7 @@ public class Engine {
             if (p != null) {
                 p.destroy();
             }
-            if (h.isAlive()) {
+            if (h != null && h.isAlive()) {
                 h.interrupt();
             }
             try {
@@ -197,6 +305,11 @@ public class Engine {
         return true;
     }
     private void bestMove(String msg) {
+        long searchId = this.activeSearchId;
+
+        if (!searching && !stopFlag) {
+            return;
+        }
         if (stopFlag) {
             stopFlag = false;
             return;
@@ -210,9 +323,15 @@ public class Engine {
             int t = random.nextInt(Properties.getInstance().getEngineDelayStart(), Properties.getInstance().getEngineDelayEnd());
             sleep(t);
         }
-        cb.bestMove(str[1], str.length == 4 ? str[3] : null);
+        searching = false;
+        cb.bestMove(str[1], str.length == 4 ? str[3] : null, searchId);
     }
     private void thinkDetail(String msg) {
+        if (!searching) {
+            return;
+        }
+
+        long searchId = this.activeSearchId;
         String[] str = msg.split(" ");
         ThinkData td = new ThinkData();
         List<String> detail = new ArrayList<>();
@@ -281,15 +400,20 @@ public class Engine {
         }
 
         if (td.getDetail().size() > 0) {
-            cb.thinkDetail(td);
+            cb.thinkDetail(td, searchId);
         }
     }
 
     public void analysis(String fenCode, List<String> moves, char[][] board, boolean redGo) {
+        analysis(fenCode, moves, board, redGo, System.nanoTime());
+    }
+
+    public void analysis(String fenCode, List<String> moves, char[][] board, boolean redGo, long searchId) {
         Thread.startVirtualThread(() -> {
             if (Properties.getInstance().getBookSwitch()) {
                 long s = System.currentTimeMillis();
-                List<BookData> results = OpenBookManager.getInstance().queryBook(board, redGo, moves.size() / 2 >= Properties.getInstance().getOffManualSteps());
+                int moveSize = moves == null ? 0 : moves.size();
+                List<BookData> results = OpenBookManager.getInstance().queryBook(board, redGo, moveSize / 2 >= Properties.getInstance().getOffManualSteps());
                 System.out.println("查询库时间" + (System.currentTimeMillis() - s));
                 this.cb.showBookResults(results);
                 if (results.size() > 0 && this.analysisModel != AnalysisModel.INFINITE) {
@@ -297,51 +421,81 @@ public class Engine {
                         int t = random.nextInt(Properties.getInstance().getBookDelayStart(), Properties.getInstance().getBookDelayEnd());
                         sleep(t);
                     }
-                    this.cb.bestMove(results.get(0).getMove(), null);
+                    this.cb.bestMove(results.get(0).getMove(), null, searchId);
                     return;
                 }
 
             }
-            this.analysis(fenCode, moves, null);
+            this.analysis(fenCode, moves, null, searchId);
         });
     }
 
     public void analysis(String fenCode, List<String> moves, List<String> tacticList) {
-        stop();
+        analysis(fenCode, moves, tacticList, System.nanoTime());
+    }
 
-        if (threadNumChange) {
-            cmd(("uci".equals(this.protocol) ? "setoption name Threads value " : "setoption Threads ") + threadNum);
-            this.threadNumChange = false;
-        }
-        if (hashSizeChange) {
-            cmd(("uci".equals(this.protocol) ? "setoption name Hash value " : "setoption Hash ") + hashSize);
-            this.hashSizeChange = false;
-        }
+    public void analysis(String fenCode, List<String> moves, List<String> tacticList, long searchId) {
+        synchronized (analysisLock) {
+            boolean wasSearching = this.searching;
+            stop();
+            if (wasSearching) {
+                waitReady();
+            }
+            stopFlag = false;
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("position fen ").append(fenCode);
-        if (moves != null && moves.size() > 0) {
-            sb.append(" moves");
-            for (String move : moves) {
-                sb.append(" ").append(move);
+            if (threadNumChange) {
+                cmd(("uci".equals(this.protocol) ? "setoption name Threads value " : "setoption Threads ") + threadNum);
+                this.threadNumChange = false;
+            }
+            if (hashSizeChange) {
+                cmd(("uci".equals(this.protocol) ? "setoption name Hash value " : "setoption Hash ") + hashSize);
+                this.hashSizeChange = false;
+            }
+
+            this.activeSearchId = searchId;
+            this.searching = true;
+            this.time = Integer.MAX_VALUE;
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("position fen ").append(fenCode);
+            if (moves != null && moves.size() > 0) {
+                sb.append(" moves");
+                for (String move : moves) {
+                    sb.append(" ").append(move);
+                }
+            }
+            cmd(sb.toString());
+
+            boolean hasTactics = tacticList != null && !tacticList.isEmpty();
+            if (hasTactics) {
+                sb = new StringBuilder();
+                sb.append(" searchmoves");
+                for (String tactic : tacticList) {
+                    sb.append(" ").append(tactic);
+                }
+            }
+            if (analysisModel == AnalysisModel.FIXED_STEPS) {
+                cmd("go depth " + analysisValue + (hasTactics ? sb.toString() : ""));
+            } else if (analysisModel == AnalysisModel.FIXED_TIME) {
+                cmd("go movetime " + analysisValue + (hasTactics ? sb.toString() : ""));
+            } else {
+                cmd("go infinite" + (hasTactics ? sb.toString() : ""));
             }
         }
-        cmd(sb.toString());
+    }
 
-        boolean hasTactics = tacticList != null && !tacticList.isEmpty();
-        if (hasTactics) {
-            sb = new StringBuilder();
-            sb.append(" searchmoves");
-            for (String tactic : tacticList) {
-                sb.append(" ").append(tactic);
+    private void waitReady() {
+        CountDownLatch latch = new CountDownLatch(1);
+        this.readyLatch = latch;
+        cmd("isready");
+        try {
+            latch.await(120, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            if (this.readyLatch == latch) {
+                this.readyLatch = null;
             }
-        }
-        if (analysisModel == AnalysisModel.FIXED_STEPS) {
-            cmd("go depth " + analysisValue + (hasTactics ? sb.toString() : ""));
-        } else if (analysisModel == AnalysisModel.FIXED_TIME) {
-            cmd("go movetime " + analysisValue + (hasTactics ? sb.toString() : ""));
-        } else {
-            cmd("go infinite" + (hasTactics ? sb.toString() : ""));
         }
     }
 
@@ -350,17 +504,20 @@ public class Engine {
     }
 
     public void stop() {
+        this.searching = false;
         stopFlag = true;
         cmd("stop");
     }
 
     private void cmd(String command) {
         System.out.println(command);
-        try {
-            writer.write(command + System.getProperty("line.separator"));
-            writer.flush();
-        } catch (Exception e) {
-            e.printStackTrace();
+        synchronized (cmdLock) {
+            try {
+                writer.write(command + System.getProperty("line.separator"));
+                writer.flush();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -386,6 +543,8 @@ public class Engine {
 
     public void close() {
         try {
+            this.searching = false;
+
             if (process.isAlive()) {
                 cmd("quit");
             }

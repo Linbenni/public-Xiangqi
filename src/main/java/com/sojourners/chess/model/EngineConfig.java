@@ -9,15 +9,18 @@ public class EngineConfig implements Serializable {
 
     private String name;
 
-    private String path;
+    private String workDir;
+
+    private String command;
 
     private String protocol;
 
     private LinkedHashMap<String, String> options;
 
-    public EngineConfig(String name, String path, String protocol, LinkedHashMap<String, String> options) {
+    public EngineConfig(String name, String workDir, String command, String protocol, LinkedHashMap<String, String> options) {
         this.name = name;
-        this.path = path;
+        this.workDir = workDir;
+        this.command = command;
         this.protocol = protocol;
         this.options = options;
     }
@@ -38,12 +41,20 @@ public class EngineConfig implements Serializable {
         this.name = name;
     }
 
-    public String getPath() {
-        return path;
+    public String getWorkDir() {
+        return workDir;
     }
 
-    public void setPath(String path) {
-        this.path = path;
+    public void setWorkDir(String workDir) {
+        this.workDir = workDir;
+    }
+
+    public String getCommand() {
+        return command;
+    }
+
+    public void setCommand(String command) {
+        this.command = command;
     }
 
     public String getProtocol() {

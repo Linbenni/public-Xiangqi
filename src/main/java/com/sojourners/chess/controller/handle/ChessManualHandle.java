@@ -457,13 +457,48 @@ public class ChessManualHandle {
     }
 
     public void setScore(Integer score, Integer mate) {
+        setScoreAt(p, score, mate);
+    }
+
+    public void setScoreBySearchPly(int searchPly, Integer score, Integer mate) {
+        int target = resolveScoreIndex(searchPly);
+        if (target >= 0) {
+            setScoreAt(target, score, mate);
+        }
+    }
+
+    private int resolveScoreIndex(int searchPly) {
+        int size = recordTable.getItems().size();
+        if (size <= 0) {
+            return -1;
+        }
+        int index = searchPly;
+        // 分数写到当前待走方对应的记录行，避免在棋谱打分时出现错位。
+        if (searchPly + 1 < size) {
+            index = searchPly + 1;
+        }
+        // 开局分默认是0；只有存在后续记录时才把引擎分写到下一行。
+        // 当前只有首行时，仍允许把软件分析分展示在首行，避免分数完全不显示。
+        if (index == 0 && size > 1) {
+            return 1;
+        }
+        if (index >= size) {
+            index = size - 1;
+        }
+        return index;
+    }
+
+    private void setScoreAt(int index, Integer score, Integer mate) {
+        if (index < 0 || index >= recordTable.getItems().size()) {
+            return;
+        }
         int s;
         if (mate != null) {
             s = (score < 0 ? -30000 : 30000) - score;
         } else {
             s = score;
         }
-        ManualRecord currentRecord = recordTable.getItems().get(p);
+        ManualRecord currentRecord = recordTable.getItems().get(index);
         currentRecord.setScore(s);
         refreshRecordView(currentRecord, null);
     }
@@ -520,6 +555,9 @@ public class ChessManualHandle {
 
         this.fenCode = cm.getFenCode();
         this.manualHead = cm.getHead();
+        if (this.manualHead != null && this.manualHead.getId() == 0) {
+            this.manualHead.setScore(0);
+        }
         this.manualFile = file;
         this.p = 0;
 

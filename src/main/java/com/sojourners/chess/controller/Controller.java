@@ -182,6 +182,12 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     private volatile boolean isThinking;
 
     /**
+     * 当前分析会话（用于过滤过期回调）
+     */
+    private volatile long activeSearchId;
+    private volatile int activeSearchPly;
+
+    /**
      * 变招列表
      */
     private List<String> tacticList;
@@ -334,7 +340,8 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
             engine.setThreadNum(prop.getThreadNum());
             engine.setHashSize(prop.getHashSize());
             engine.setAnalysisModel(robotAnalysis.getValue() ? Engine.AnalysisModel.INFINITE : prop.getAnalysisModel(), prop.getAnalysisValue());
-            engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(), tacticList);
+            long searchId = beginSearchContext();
+            engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(), tacticList, searchId);
         }
     }
 
@@ -432,7 +439,14 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         engine.setThreadNum(prop.getThreadNum());
         engine.setHashSize(prop.getHashSize());
         engine.setAnalysisModel(robotAnalysis.getValue() ? Engine.AnalysisModel.INFINITE : prop.getAnalysisModel(), prop.getAnalysisValue());
-        engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(), this.board.getBoard(), redGo);
+        long searchId = beginSearchContext();
+        engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(), this.board.getBoard(), redGo, searchId);
+    }
+
+    private long beginSearchContext() {
+        this.activeSearchPly = chessManualHandle.getP();
+        this.activeSearchId++;
+        return this.activeSearchId;
     }
 
     @FXML
@@ -938,6 +952,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         listView.getItems().clear();
         // 清空思考状态信息
         this.infoShowLabel.setText("");
+        this.activeSearchPly = 0;
 
         // 库招显示
         doOpenBook();
@@ -1134,11 +1149,18 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     }
 
     @Override
-    public void bestMove(String first, String second) {
+    public void bestMove(String first, String second, long searchId) {
+        if (searchId != this.activeSearchId) {
+            return;
+        }
         if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue()) {
             ChessBoard.Step s = board.stepForBoard(first);
+            long sid = searchId;
 
             Platform.runLater(() -> {
+                if (sid != this.activeSearchId) {
+                    return;
+                }
                 board.move(s.getStart().getX(), s.getStart().getY(), s.getEnd().getX(), s.getEnd().getY());
                 board.setTip(second, null, 1);
 
@@ -1152,10 +1174,14 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     }
 
     @Override
-    public void thinkDetail(ThinkData td) {
+    public void thinkDetail(ThinkData td, long searchId) {
+        if (searchId != this.activeSearchId) {
+            return;
+        }
         if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue() || robotAnalysis.getValue()) {
             td.generate(redGo, isReverse.getValue(), board);
             if (td.getValid()) {
+                int scorePly = this.activeSearchPly;
                 Platform.runLater(() -> {
                     listView.getItems().addFirst(td);
                     if (listView.getItems().size() > 128) {
@@ -1171,7 +1197,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
                     board.setTip(td.getDetail().get(0), td.getDetail().size() > 1 ? td.getDetail().get(1) : null, td.getPv());
 
                     if (td.getPv() == 1) {
-                        chessManualHandle.setScore(td.getScore(), td.getMate());
+                        chessManualHandle.setScoreBySearchPly(scorePly, td.getScore(), td.getMate());
                     }
                 });
             }

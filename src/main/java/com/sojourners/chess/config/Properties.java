@@ -75,8 +75,24 @@ public class Properties implements Serializable {
     private int bookDelayStart = 0;
     private int bookDelayEnd = 0;
 
-    private int mouseClickDelay = 2;
-    private int mouseMoveDelay = 0;
+    // 兼容旧版本保留字段（固定延迟）
+    private int mouseClickDelay = 200;
+    private int mouseMoveDelay = 200;
+
+    // 随机延迟区间（毫秒）
+    private int mouseClickDelayStart = 200;
+    private int mouseClickDelayEnd = 500;
+    private int mouseMoveDelayStart = 200;
+    private int mouseMoveDelayEnd = 500;
+
+    /**
+     * 连线手工棋盘区域（按窗口截图尺寸的相对比例保存）
+     */
+    private boolean linkUseManualBoardRegion = false;
+    private double linkBoardAreaXRatio = -1;
+    private double linkBoardAreaYRatio = -1;
+    private double linkBoardAreaWRatio = -1;
+    private double linkBoardAreaHRatio = -1;
     /*
      * 显示棋谱管理
      */
@@ -128,6 +144,7 @@ public class Properties implements Serializable {
                 try {
                     os = new ObjectInputStream(new FileInputStream(file));
                     prop = (Properties) os.readObject();
+                    prop.normalizeMouseDelayRange();
                 } catch (Exception e) {
                     e.printStackTrace();
                 } finally {
@@ -154,6 +171,37 @@ public class Properties implements Serializable {
             }
         }
         return prop;
+    }
+
+    private void normalizeMouseDelayRange() {
+        if (mouseClickDelayStart == 0 && mouseClickDelayEnd == 0 && mouseClickDelay > 0) {
+            mouseClickDelayStart = mouseClickDelay;
+            mouseClickDelayEnd = mouseClickDelay;
+        }
+        if (mouseMoveDelayStart == 0 && mouseMoveDelayEnd == 0 && mouseMoveDelay > 0) {
+            mouseMoveDelayStart = mouseMoveDelay;
+            mouseMoveDelayEnd = mouseMoveDelay;
+        }
+        // 旧版本默认值（点击2，走子0）统一迁移为更稳的 200-500。
+        if (mouseClickDelayStart == 2 && mouseClickDelayEnd == 2
+                && mouseMoveDelayStart == 0 && mouseMoveDelayEnd == 0) {
+            mouseClickDelayStart = 200;
+            mouseClickDelayEnd = 500;
+            mouseMoveDelayStart = 200;
+            mouseMoveDelayEnd = 500;
+        }
+        if (mouseClickDelayStart > mouseClickDelayEnd) {
+            int tmp = mouseClickDelayStart;
+            mouseClickDelayStart = mouseClickDelayEnd;
+            mouseClickDelayEnd = tmp;
+        }
+        if (mouseMoveDelayStart > mouseMoveDelayEnd) {
+            int tmp = mouseMoveDelayStart;
+            mouseMoveDelayStart = mouseMoveDelayEnd;
+            mouseMoveDelayEnd = tmp;
+        }
+        mouseClickDelay = mouseClickDelayStart;
+        mouseMoveDelay = mouseMoveDelayStart;
     }
 
     public void save() {
@@ -216,19 +264,111 @@ public class Properties implements Serializable {
     }
 
     public int getMouseClickDelay() {
-        return mouseClickDelay;
+        return getMouseClickDelayStart();
     }
 
     public void setMouseClickDelay(int mouseClickDelay) {
         this.mouseClickDelay = mouseClickDelay;
+        this.mouseClickDelayStart = mouseClickDelay;
+        this.mouseClickDelayEnd = mouseClickDelay;
     }
 
     public int getMouseMoveDelay() {
-        return mouseMoveDelay;
+        return getMouseMoveDelayStart();
     }
 
     public void setMouseMoveDelay(int mouseMoveDelay) {
         this.mouseMoveDelay = mouseMoveDelay;
+        this.mouseMoveDelayStart = mouseMoveDelay;
+        this.mouseMoveDelayEnd = mouseMoveDelay;
+    }
+
+    public int getMouseClickDelayStart() {
+        return mouseClickDelayStart;
+    }
+
+    public void setMouseClickDelayStart(int mouseClickDelayStart) {
+        this.mouseClickDelayStart = mouseClickDelayStart;
+        this.mouseClickDelay = mouseClickDelayStart;
+    }
+
+    public int getMouseClickDelayEnd() {
+        return mouseClickDelayEnd;
+    }
+
+    public void setMouseClickDelayEnd(int mouseClickDelayEnd) {
+        this.mouseClickDelayEnd = mouseClickDelayEnd;
+    }
+
+    public int getMouseMoveDelayStart() {
+        return mouseMoveDelayStart;
+    }
+
+    public void setMouseMoveDelayStart(int mouseMoveDelayStart) {
+        this.mouseMoveDelayStart = mouseMoveDelayStart;
+        this.mouseMoveDelay = mouseMoveDelayStart;
+    }
+
+    public int getMouseMoveDelayEnd() {
+        return mouseMoveDelayEnd;
+    }
+
+    public void setMouseMoveDelayEnd(int mouseMoveDelayEnd) {
+        this.mouseMoveDelayEnd = mouseMoveDelayEnd;
+    }
+
+    public boolean isLinkUseManualBoardRegion() {
+        return linkUseManualBoardRegion;
+    }
+
+    public void setLinkUseManualBoardRegion(boolean linkUseManualBoardRegion) {
+        this.linkUseManualBoardRegion = linkUseManualBoardRegion;
+    }
+
+    public double getLinkBoardAreaXRatio() {
+        return linkBoardAreaXRatio;
+    }
+
+    public void setLinkBoardAreaXRatio(double linkBoardAreaXRatio) {
+        this.linkBoardAreaXRatio = linkBoardAreaXRatio;
+    }
+
+    public double getLinkBoardAreaYRatio() {
+        return linkBoardAreaYRatio;
+    }
+
+    public void setLinkBoardAreaYRatio(double linkBoardAreaYRatio) {
+        this.linkBoardAreaYRatio = linkBoardAreaYRatio;
+    }
+
+    public double getLinkBoardAreaWRatio() {
+        return linkBoardAreaWRatio;
+    }
+
+    public void setLinkBoardAreaWRatio(double linkBoardAreaWRatio) {
+        this.linkBoardAreaWRatio = linkBoardAreaWRatio;
+    }
+
+    public double getLinkBoardAreaHRatio() {
+        return linkBoardAreaHRatio;
+    }
+
+    public void setLinkBoardAreaHRatio(double linkBoardAreaHRatio) {
+        this.linkBoardAreaHRatio = linkBoardAreaHRatio;
+    }
+
+    public boolean hasLinkBoardArea() {
+        return linkBoardAreaXRatio >= 0 && linkBoardAreaYRatio >= 0
+                && linkBoardAreaWRatio > 0 && linkBoardAreaHRatio > 0
+                && linkBoardAreaXRatio + linkBoardAreaWRatio <= 1.001
+                && linkBoardAreaYRatio + linkBoardAreaHRatio <= 1.001;
+    }
+
+    public void clearLinkBoardArea() {
+        linkBoardAreaXRatio = -1;
+        linkBoardAreaYRatio = -1;
+        linkBoardAreaWRatio = -1;
+        linkBoardAreaHRatio = -1;
     }
 
     public List<String> getOpenBookList() {

@@ -11,6 +11,7 @@ import java.awt.event.InputEvent;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 
 public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
@@ -56,6 +57,8 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
      */
     @Override
     public void start() {
+        this.boardPos = null;
+        this.count = 0;
         getTargetWindowId();
     }
 
@@ -88,11 +91,12 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
     @Override
     public void run() {
         while (!Thread.currentThread().isInterrupted()) {
-            if (!findBoardPosition()) {
+            if (boardPos == null && !initBoardPositionFromManual() && !findBoardPosition()) {
                 sleep(1000);
                 continue;
             }
-            if (!initChessBoard()) {
+            // 优先复用已锁定的棋盘区域，失败后再回退到全窗口重定位。
+            if (!initChessBoard() && (!findBoardPosition() || !initChessBoard())) {
                 sleep(1000);
                 continue;
             }
@@ -173,6 +177,33 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
                 }
             }
         }
+    }
+
+    private boolean initBoardPositionFromManual() {
+        if (!prop.isLinkUseManualBoardRegion() || !prop.hasLinkBoardArea()) {
+            return false;
+        }
+        BufferedImage img = screenshot(true);
+        if (img == null || img.getWidth() <= 0 || img.getHeight() <= 0) {
+            return false;
+        }
+        int width = img.getWidth(), height = img.getHeight();
+        int x = (int) Math.round(prop.getLinkBoardAreaXRatio() * width);
+        int y = (int) Math.round(prop.getLinkBoardAreaYRatio() * height);
+        int w = (int) Math.round(prop.getLinkBoardAreaWRatio() * width);
+        int h = (int) Math.round(prop.getLinkBoardAreaHRatio() * height);
+        if (w <= 10 || h <= 10) {
+            return false;
+        }
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x + w > width) w = width - x;
+        if (y + h > height) h = height - y;
+        if (w <= 10 || h <= 10) {
+            return false;
+        }
+        boardPos = new Rectangle(x, y, w, h);
+        return true;
     }
 
     class Action {
@@ -415,6 +446,54 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
         }
     }
 
+    protected int nextClickDelay() {
+        int start = prop.getMouseClickDelayStart();
+        int end = prop.getMouseClickDelayEnd();
+        if (start > end) {
+            int tmp = start;
+            start = end;
+            end = tmp;
+        }
+        if (end <= 0) {
+            return 0;
+        }
+        if (start < 0) {
+            start = 0;
+        }
+        return start == end ? start : ThreadLocalRandom.current().nextInt(start, end + 1);
+    }
+
+    protected int nextMoveDelay() {
+        int start = prop.getMouseMoveDelayStart();
+        int end = prop.getMouseMoveDelayEnd();
+        if (start > end) {
+            int tmp = start;
+            start = end;
+            end = tmp;
+        }
+        if (end <= 0) {
+            return 0;
+        }
+        if (start < 0) {
+            start = 0;
+        }
+        return start == end ? start : ThreadLocalRandom.current().nextInt(start, end + 1);
+    }
+
+    protected void sleepMouseClickDelay() {
+        int t = nextClickDelay();
+        if (t > 0) {
+            sleep(t);
+        }
+    }
+
+    protected void sleepMouseMoveDelay() {
+        int t = nextMoveDelay();
+        if (t > 0) {
+            sleep(t);
+        }
+    }
+
     /**
      * 前台截图
      * @param windowPos
@@ -441,20 +520,14 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
         robot.mouseMove(windowPos.x + p1.x, windowPos.y+ p1.y);
 
         robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-        if (prop.getMouseClickDelay() > 0) {
-            robot.delay(prop.getMouseClickDelay());
-        }
+        sleepMouseClickDelay();
         robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
 
-        if (prop.getMouseMoveDelay() > 0) {
-            robot.delay(prop.getMouseMoveDelay());
-        }
+        sleepMouseMoveDelay();
         robot.mouseMove(windowPos.x + p2.x, windowPos.y + p2.y);
 
         robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-        if (prop.getMouseClickDelay() > 0) {
-            robot.delay(prop.getMouseClickDelay());
-        }
+        sleepMouseClickDelay();
         robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
 
         robot.mouseMove((int) mouse.getX(), (int) mouse.getY());
@@ -467,6 +540,9 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
      */
     boolean findBoardPosition() {
         BufferedImage img = screenshot(true);
+        if (img == null) {
+            return false;
+        }
         this.boardPos = this.aiModel.findBoardPosition(img);
         return this.boardPos != null;
     }
@@ -483,7 +559,13 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
 
         } else {
             Rectangle pos = getTargetWindowPosition();
+            if (pos == null) {
+                return null;
+            }
             if (!fullScreen) {
+                if (boardPos == null) {
+                    return null;
+                }
                 pos.setLocation(pos.x + boardPos.x, pos.y + boardPos.y);
                 pos.setSize(boardPos.width, boardPos.height);
             }
@@ -496,6 +578,9 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
     private boolean findChessBoard(char[][] board) {
         // 截图
         BufferedImage img = screenshot(false);
+        if (img == null) {
+            return false;
+        }
         // ai识别棋盘棋子
         if (!this.aiModel.findChessBoard(img, board)) {
             return false;
@@ -544,6 +629,9 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
      * @return
      */
     private boolean initChessBoard() {
+        if (boardPos == null) {
+            return false;
+        }
         if (!findChessBoard(board2)) {
             return false;
         }
@@ -572,6 +660,9 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
      * @param y2
      */
     public void autoClick(int x1, int y1, int x2, int y2) {
+        if (boardPos == null) {
+            return;
+        }
 
         Point p1 = getPosition(x1, y1);
         Point p2 = getPosition(x2, y2);
@@ -579,6 +670,9 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
             mouseClickByBack(p1, p2);
         } else {
             Rectangle windowPos = getTargetWindowPosition();
+            if (windowPos == null) {
+                return;
+            }
             mouseClickByFront(windowPos, p1, p2);
         }
     }

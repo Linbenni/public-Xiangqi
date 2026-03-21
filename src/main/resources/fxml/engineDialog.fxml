@@ -11,7 +11,7 @@
       <TableView fx:id="table" prefHeight="338.0" prefWidth="508.0" BorderPane.alignment="CENTER">
          <columns>
             <TableColumn prefWidth="120.0" sortable="false" text="名称" />
-            <TableColumn prefWidth="260.0" sortable="false" text="路径" />
+            <TableColumn prefWidth="260.0" sortable="false" text="命令" />
             <TableColumn prefWidth="100.0" sortable="false" text="协议" />
          </columns>
       </TableView>

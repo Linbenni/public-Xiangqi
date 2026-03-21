@@ -8,18 +8,18 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
 
-<VBox maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="250.0" prefWidth="575.0" style="-fx-padding: 10px 0px;" xmlns="http://javafx.com/javafx/22" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.sojourners.chess.controller.EngineAddController">
+<VBox maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="330.0" prefWidth="610.0" style="-fx-padding: 10px 0px;" xmlns="http://javafx.com/javafx/22" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.sojourners.chess.controller.EngineAddController">
    <children>
       <HBox prefHeight="100.0" prefWidth="200.0">
          <children>
-            <VBox prefHeight="165.0" prefWidth="300.0">
+            <VBox prefHeight="250.0" prefWidth="335.0">
                <children>
                   <HBox alignment="CENTER_LEFT" minHeight="-Infinity" minWidth="-Infinity" prefHeight="55.0" prefWidth="200.0" style="-fx-padding: 0px 20px;">
                      <children>
-                        <Label text="路径：" />
-                        <TextField fx:id="pathText" prefHeight="27.0" prefWidth="170.0" />
+                        <Label text="目录：" />
+                        <TextField fx:id="workDirText" prefHeight="27.0" prefWidth="190.0" />
                         <Label text="  " />
-                        <Button mnemonicParsing="false" onAction="#selectButtonClick" text="选择" />
+                        <Button mnemonicParsing="false" onAction="#selectWorkDirClick" text="选择" />
                      </children>
                   </HBox>
                   <HBox alignment="CENTER_LEFT" minHeight="-Infinity" minWidth="-Infinity" prefHeight="55.0" prefWidth="200.0" style="-fx-padding: 0px 20px;">
@@ -31,14 +31,23 @@
                   </HBox>
                   <HBox alignment="CENTER_LEFT" minHeight="-Infinity" minWidth="-Infinity" prefHeight="55.0" prefWidth="200.0" style="-fx-padding: 0px 20px;">
                      <children>
+                        <Label text="命令：" />
+                        <TextField fx:id="commandText" prefHeight="27.0" prefWidth="190.0" promptText="如: uv run python engine.py" />
+                        <Label text="  " />
+                        <Button mnemonicParsing="false" onAction="#selectCommandClick" text="选择" />
+                     </children>
+                  </HBox>
+                  <HBox alignment="CENTER_LEFT" minHeight="-Infinity" minWidth="-Infinity" prefHeight="55.0" prefWidth="200.0" style="-fx-padding: 0px 20px;">
+                     <children>
                         <Label text="协议：" />
                         <TextField fx:id="protocolText" prefHeight="27.0" prefWidth="170.0" />
                         <Label text="  " />
+                        <Button mnemonicParsing="false" onAction="#detectButtonClick" text="检测" />
                      </children>
                   </HBox>
                </children>
             </VBox>
-            <ListView fx:id="optionsListView" focusTraversable="false" prefHeight="165.0" prefWidth="255.0">
+            <ListView fx:id="optionsListView" focusTraversable="false" prefHeight="210.0" prefWidth="255.0">
                <opaqueInsets>
                   <Insets />
                </opaqueInsets>

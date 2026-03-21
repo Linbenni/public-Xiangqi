@@ -17,4 +17,5 @@ public interface User32Extra extends User32 {
 
     boolean GetCursorPos(long[] lpPoint); //use macros POINT_X() and POINT_Y() on long lpPoint[0]
     HWND WindowFromPoint(long point);
+    boolean ClientToScreen(WinDef.HWND hWnd, WinDef.POINT point);
 }

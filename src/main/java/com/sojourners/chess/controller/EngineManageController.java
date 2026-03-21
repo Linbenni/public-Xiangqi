@@ -58,7 +58,7 @@ public class EngineManageController {
         TableColumn nameCol = (TableColumn) table.getColumns().get(0);
         nameCol.setCellValueFactory(new PropertyValueFactory<EngineConfig, String>("name"));
         TableColumn pathCol = (TableColumn) table.getColumns().get(1);
-        pathCol.setCellValueFactory(new PropertyValueFactory<EngineConfig, String>("path"));
+        pathCol.setCellValueFactory(new PropertyValueFactory<EngineConfig, String>("command"));
         TableColumn proCol = (TableColumn) table.getColumns().get(2);
         proCol.setCellValueFactory(new PropertyValueFactory<EngineConfig, String>("protocol"));
 

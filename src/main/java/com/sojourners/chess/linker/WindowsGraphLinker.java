@@ -1,5 +1,6 @@
 package com.sojourners.chess.linker;
 
+import com.sojourners.chess.App;
 import com.sojourners.chess.config.Properties;
 import com.sojourners.chess.jna.User32Extra;
 import com.sojourners.chess.mouse.GlobalMouseListener;
@@ -7,6 +8,18 @@ import com.sojourners.chess.mouse.MouseListenCallBack;
 import com.sojourners.chess.util.PathUtils;
 import com.sun.jna.Memory;
 import com.sun.jna.platform.win32.*;
+import javafx.application.Platform;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.Label;
+import javafx.scene.input.KeyCode;
+import javafx.scene.layout.Pane;
+import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
+import javafx.stage.Modality;
+import javafx.stage.Screen;
+import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -17,10 +30,19 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
     private GlobalMouseListener listener;
     private double screenScalingFactor;
     private boolean needScaling;
+    private Properties prop;
+    private SelectState selectState = SelectState.SELECT_WINDOW;
+    private Stage maskStage;
+
+    private enum SelectState {
+        SELECT_WINDOW,
+        SELECT_BOARD_AREA
+    }
 
     public WindowsGraphLinker(LinkerCallBack callBack) throws AWTException {
         super(callBack);
         this.listener = new GlobalMouseListener(this);
+        this.prop = Properties.getInstance();
         // 分辨率缩放系数
         this.screenScalingFactor = getScreenScalingFactor();
     }
@@ -28,6 +50,7 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
     @Override
     public void getTargetWindowId() {
         try {
+            this.selectState = SelectState.SELECT_WINDOW;
             this.listener.startListenMouse();
             selectCursor();
 
@@ -38,21 +61,213 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
     @Override
     public void mouseClick() {
         try {
-            this.listener.stopListenMouse();
-            restoreCursor();
-
             long[] getPos = new long[1];
             User32Extra.INSTANCE.GetCursorPos(getPos);
-            this.hwnd = User32Extra.INSTANCE.WindowFromPoint(getPos[0]);
-
-            this.needScaling = needScaling(this.hwnd);
-
-            scan();
+            if (this.selectState == SelectState.SELECT_WINDOW) {
+                this.hwnd = User32Extra.INSTANCE.WindowFromPoint(getPos[0]);
+                this.needScaling = needScaling(this.hwnd);
+                if (prop.isLinkUseManualBoardRegion() && !prop.hasLinkBoardArea()) {
+                    this.selectState = SelectState.SELECT_BOARD_AREA;
+                    openBoardAreaMask();
+                } else {
+                    finishSelectionAndScan();
+                }
+            }
 
         } catch (Exception e) {
             e.printStackTrace();
         }
 
+    }
+
+    @Override
+    public void mousePress(int x, int y) {
+    }
+
+    @Override
+    public void mouseRelease(int x, int y) {
+    }
+
+    private void finishSelectionAndScan() throws Exception {
+        this.listener.stopListenMouse();
+        restoreCursor();
+        scan();
+    }
+
+    private void saveManualBoardArea(Point p1, Point p2) {
+        if (p1 == null || p2 == null) {
+            return;
+        }
+        java.awt.Rectangle windowPos = getTargetWindowPosition();
+        if (windowPos == null || windowPos.width <= 0 || windowPos.height <= 0) {
+            return;
+        }
+        int left = Math.min(p1.x, p2.x) - windowPos.x;
+        int top = Math.min(p1.y, p2.y) - windowPos.y;
+        int right = Math.max(p1.x, p2.x) - windowPos.x;
+        int bottom = Math.max(p1.y, p2.y) - windowPos.y;
+        if (left < 0) left = 0;
+        if (top < 0) top = 0;
+        if (right > windowPos.width) right = windowPos.width;
+        if (bottom > windowPos.height) bottom = windowPos.height;
+        int width = right - left;
+        int height = bottom - top;
+        if (width < 10 || height < 10) {
+            return;
+        }
+
+        prop.setLinkBoardAreaXRatio(left * 1.0 / windowPos.width);
+        prop.setLinkBoardAreaYRatio(top * 1.0 / windowPos.height);
+        prop.setLinkBoardAreaWRatio(width * 1.0 / windowPos.width);
+        prop.setLinkBoardAreaHRatio(height * 1.0 / windowPos.height);
+        prop.save();
+    }
+
+    private void openBoardAreaMask() throws Exception {
+        this.listener.stopListenMouse();
+        restoreCursor();
+        Platform.runLater(() -> {
+            try {
+                closeMaskStage();
+
+                java.awt.Rectangle windowPos = getTargetWindowPosition();
+                if (windowPos == null || windowPos.width <= 0 || windowPos.height <= 0) {
+                    scan();
+                    return;
+                }
+
+                Stage stage = new Stage(StageStyle.TRANSPARENT);
+                stage.initOwner(App.getMainStage());
+                stage.initModality(Modality.NONE);
+                stage.setAlwaysOnTop(true);
+                stage.setFullScreenExitHint("");
+                stage.setFullScreen(false);
+
+                javafx.geometry.Rectangle2D bounds = Screen.getPrimary().getBounds();
+                Pane root = new Pane();
+                root.setPickOnBounds(true);
+                root.setStyle("-fx-background-color: rgba(0,0,0,0.25);");
+
+                javafx.scene.shape.Rectangle windowFrame = new javafx.scene.shape.Rectangle(windowPos.x, windowPos.y, windowPos.width, windowPos.height);
+                windowFrame.setFill(Color.color(1, 1, 1, 0.08));
+                windowFrame.setStroke(Color.web("#9FE870"));
+                windowFrame.getStrokeDashArray().addAll(10.0, 8.0);
+
+                javafx.scene.shape.Rectangle selection = new javafx.scene.shape.Rectangle();
+                selection.setVisible(false);
+                selection.setFill(Color.color(1, 1, 1, 0.12));
+                selection.setStroke(Color.web("#F7D154"));
+                selection.setStrokeWidth(2);
+
+                Label tip = new Label("拖拽选择棋盘正方形区域，回车确认，Esc 取消");
+                tip.setTextFill(Color.WHITE);
+                tip.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-background-color: rgba(0,0,0,0.45); -fx-padding: 10 16;");
+
+                StackPane tipWrap = new StackPane(tip);
+                tipWrap.setMouseTransparent(true);
+                tipWrap.setAlignment(Pos.TOP_CENTER);
+                tipWrap.setPrefWidth(bounds.getWidth());
+                tipWrap.setLayoutY(Math.max(24, windowPos.y - 60));
+
+                final double[] startX = new double[1];
+                final double[] startY = new double[1];
+                final boolean[] hasSelection = new boolean[1];
+
+                root.setOnMousePressed(event -> {
+                    if (!windowPos.contains((int) event.getScreenX(), (int) event.getScreenY())) {
+                        return;
+                    }
+                    startX[0] = event.getScreenX();
+                    startY[0] = event.getScreenY();
+                    hasSelection[0] = true;
+                    selection.setVisible(true);
+                    updateSelection(selection, windowPos, startX[0], startY[0], event.getScreenX(), event.getScreenY());
+                });
+
+                root.setOnMouseDragged(event -> {
+                    if (!hasSelection[0]) {
+                        return;
+                    }
+                    updateSelection(selection, windowPos, startX[0], startY[0], event.getScreenX(), event.getScreenY());
+                });
+
+                root.setOnMouseReleased(event -> {
+                    if (!hasSelection[0]) {
+                        return;
+                    }
+                    updateSelection(selection, windowPos, startX[0], startY[0], event.getScreenX(), event.getScreenY());
+                });
+
+                root.setOnKeyPressed(event -> {
+                    if (event.getCode() == KeyCode.ESCAPE) {
+                        closeMaskStage();
+                    } else if (event.getCode() == KeyCode.ENTER && selection.isVisible() && selection.getWidth() > 10 && selection.getHeight() > 10) {
+                        Point p1 = new Point((int) Math.round(selection.getX()), (int) Math.round(selection.getY()));
+                        Point p2 = new Point((int) Math.round(selection.getX() + selection.getWidth()), (int) Math.round(selection.getY() + selection.getHeight()));
+                        saveManualBoardArea(p1, p2);
+                        closeMaskStage();
+                        scan();
+                    }
+                });
+
+                root.getChildren().addAll(windowFrame, selection, tipWrap);
+
+                Scene scene = new Scene(root, bounds.getWidth(), bounds.getHeight(), Color.TRANSPARENT);
+                stage.setScene(scene);
+                stage.setX(bounds.getMinX());
+                stage.setY(bounds.getMinY());
+                stage.show();
+                root.requestFocus();
+
+                this.maskStage = stage;
+            } catch (Exception e) {
+                e.printStackTrace();
+                scan();
+            }
+        });
+    }
+
+    private void closeMaskStage() {
+        if (this.maskStage != null) {
+            this.maskStage.close();
+            this.maskStage = null;
+        }
+    }
+
+    private void updateSelection(javafx.scene.shape.Rectangle selection, java.awt.Rectangle windowPos, double anchorX, double anchorY, double currentX, double currentY) {
+        double left = clamp(anchorX, windowPos.x, windowPos.x + windowPos.width);
+        double top = clamp(anchorY, windowPos.y, windowPos.y + windowPos.height);
+        double curX = clamp(currentX, windowPos.x, windowPos.x + windowPos.width);
+        double curY = clamp(currentY, windowPos.y, windowPos.y + windowPos.height);
+
+        double dx = curX - left;
+        double dy = curY - top;
+        double size = Math.min(Math.max(Math.abs(dx), Math.abs(dy)), Math.min(windowPos.width, windowPos.height));
+
+        double x = dx >= 0 ? left : left - size;
+        double y = dy >= 0 ? top : top - size;
+
+        if (x < windowPos.x) {
+            x = windowPos.x;
+        }
+        if (y < windowPos.y) {
+            y = windowPos.y;
+        }
+        if (x + size > windowPos.x + windowPos.width) {
+            x = windowPos.x + windowPos.width - size;
+        }
+        if (y + size > windowPos.y + windowPos.height) {
+            y = windowPos.y + windowPos.height - size;
+        }
+
+        selection.setX(x);
+        selection.setY(y);
+        selection.setWidth(size);
+        selection.setHeight(size);
+    }
+
+    private double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private boolean needScaling(WinDef.HWND hwnd) {
@@ -65,10 +280,14 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
     }
 
     @Override
-    public Rectangle getTargetWindowPosition() {
+    public java.awt.Rectangle getTargetWindowPosition() {
         WinDef.RECT rect = new WinDef.RECT();
-        User32.INSTANCE.GetWindowRect(hwnd, rect);
-        Rectangle rectangle = rect.toRectangle();
+        User32.INSTANCE.GetClientRect(hwnd, rect);
+        WinDef.POINT point = new WinDef.POINT();
+        point.x = 0;
+        point.y = 0;
+        User32Extra.INSTANCE.ClientToScreen(hwnd, point);
+        java.awt.Rectangle rectangle = new java.awt.Rectangle(point.x, point.y, rect.right - rect.left, rect.bottom - rect.top);
         // windows缩放处理
         rectangle.x /= screenScalingFactor;
         rectangle.y /= screenScalingFactor;
@@ -99,18 +318,14 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
         }
 
         leftClick(p1.x, p1.y);
-        if (Properties.getInstance().getMouseMoveDelay() > 0) {
-            sleep(Properties.getInstance().getMouseMoveDelay());
-        }
+        sleepMouseMoveDelay();
         leftClick(p2.x, p2.y);
     }
 
     private void leftClick(int x, int y) {
         User32.INSTANCE.PostMessage(hwnd, 0x0200, new WinDef.WPARAM(1), new WinDef.LPARAM(makeLParam(x, y)));
         User32.INSTANCE.PostMessage(hwnd, 0x0201, new WinDef.WPARAM(1), new WinDef.LPARAM(makeLParam(x, y)));
-        if (Properties.getInstance().getMouseClickDelay() > 0) {
-            sleep(Properties.getInstance().getMouseClickDelay());
-        }
+        sleepMouseClickDelay();
         User32.INSTANCE.PostMessage(hwnd, 0x0202, new WinDef.WPARAM(0), new WinDef.LPARAM(makeLParam(x, y)));
     }
     private int makeLParam(int loWord, int hiWord) {

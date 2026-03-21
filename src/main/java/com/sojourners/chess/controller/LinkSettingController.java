@@ -18,10 +18,19 @@ public class LinkSettingController {
     private TextField linkThreadNum;
 
     @FXML
-    private TextField mouseClickDelay;
+    private TextField mouseClickDelayStart;
 
     @FXML
-    private TextField mouseMoveDelay;
+    private TextField mouseClickDelayEnd;
+
+    @FXML
+    private TextField mouseMoveDelayStart;
+
+    @FXML
+    private TextField mouseMoveDelayEnd;
+
+    @FXML
+    private CheckBox linkUseManualBoardRegion;
 
     private Properties prop;
 
@@ -46,20 +55,52 @@ public class LinkSettingController {
         }
         prop.setLinkThreadNum(Integer.parseInt(txt));
 
-        txt = mouseClickDelay.getText();
+        txt = mouseClickDelayStart.getText();
         if (!StringUtils.isNonNegativeInt(txt)) {
-            DialogUtils.showErrorDialog("失败", "输入鼠标点击延迟错误");
+            DialogUtils.showErrorDialog("失败", "输入鼠标点击最小延迟错误");
             return;
         }
-        prop.setMouseClickDelay(Integer.parseInt(txt));
-        txt = mouseMoveDelay.getText();
+        int clickStart = Integer.parseInt(txt);
+        txt = mouseClickDelayEnd.getText();
         if (!StringUtils.isNonNegativeInt(txt)) {
-            DialogUtils.showErrorDialog("失败", "输入鼠标走子延迟错误");
+            DialogUtils.showErrorDialog("失败", "输入鼠标点击最大延迟错误");
             return;
         }
-        prop.setMouseMoveDelay(Integer.parseInt(txt));
+        int clickEnd = Integer.parseInt(txt);
+        if (clickStart > clickEnd) {
+            DialogUtils.showErrorDialog("失败", "鼠标点击延迟区间错误（最小值不能大于最大值）");
+            return;
+        }
+        prop.setMouseClickDelayStart(clickStart);
+        prop.setMouseClickDelayEnd(clickEnd);
+
+        txt = mouseMoveDelayStart.getText();
+        if (!StringUtils.isNonNegativeInt(txt)) {
+            DialogUtils.showErrorDialog("失败", "输入鼠标走子最小延迟错误");
+            return;
+        }
+        int moveStart = Integer.parseInt(txt);
+        txt = mouseMoveDelayEnd.getText();
+        if (!StringUtils.isNonNegativeInt(txt)) {
+            DialogUtils.showErrorDialog("失败", "输入鼠标走子最大延迟错误");
+            return;
+        }
+        int moveEnd = Integer.parseInt(txt);
+        if (moveStart > moveEnd) {
+            DialogUtils.showErrorDialog("失败", "鼠标走子延迟区间错误（最小值不能大于最大值）");
+            return;
+        }
+        prop.setMouseMoveDelayStart(moveStart);
+        prop.setMouseMoveDelayEnd(moveEnd);
+        prop.setLinkUseManualBoardRegion(linkUseManualBoardRegion.isSelected());
 
         App.closeLinkSetting();
+    }
+
+    @FXML
+    void clearManualBoardAreaClick(ActionEvent e) {
+        prop.clearLinkBoardArea();
+        DialogUtils.showInfoDialog("提示", "已清除手工棋盘区域，下次连线将重新框选。");
     }
 
     public void initialize() {
@@ -69,8 +110,11 @@ public class LinkSettingController {
         linkScanTime.setText(String.valueOf(prop.getLinkScanTime()));
         linkThreadNum.setText(String.valueOf(prop.getLinkThreadNum()));
 
-        mouseClickDelay.setText(String.valueOf(prop.getMouseClickDelay()));
-        mouseMoveDelay.setText(String.valueOf(prop.getMouseMoveDelay()));
+        mouseClickDelayStart.setText(String.valueOf(prop.getMouseClickDelayStart()));
+        mouseClickDelayEnd.setText(String.valueOf(prop.getMouseClickDelayEnd()));
+        mouseMoveDelayStart.setText(String.valueOf(prop.getMouseMoveDelayStart()));
+        mouseMoveDelayEnd.setText(String.valueOf(prop.getMouseMoveDelayEnd()));
+        linkUseManualBoardRegion.setSelected(prop.isLinkUseManualBoardRegion());
 
     }
 

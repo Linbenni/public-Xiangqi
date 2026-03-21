@@ -17,11 +17,11 @@ public class GlobalMouseListener implements NativeMouseInputListener {
     }
 
     public void nativeMousePressed(NativeMouseEvent e) {
-
+        this.cb.mousePress(e.getX(), e.getY());
     }
 
     public void nativeMouseReleased(NativeMouseEvent e) {
-
+        this.cb.mouseRelease(e.getX(), e.getY());
     }
 
     public void nativeMouseMoved(NativeMouseEvent e) {
@@ -39,9 +39,11 @@ public class GlobalMouseListener implements NativeMouseInputListener {
     public void startListenMouse() throws NativeHookException {
         GlobalScreen.registerNativeHook();
         GlobalScreen.addNativeMouseListener(this);
+        GlobalScreen.addNativeMouseMotionListener(this);
     }
     public void stopListenMouse() throws NativeHookException {
         GlobalScreen.removeNativeMouseListener(this);
+        GlobalScreen.removeNativeMouseMotionListener(this);
         GlobalScreen.unregisterNativeHook();
     }
 

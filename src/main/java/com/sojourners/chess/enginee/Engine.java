@@ -217,6 +217,7 @@ public class Engine {
         try {
             List<String> command = buildCommand(commandText);
             ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
             File resolvedWorkDir = resolveWorkDir(workDir, command);
             if (resolvedWorkDir != null) {
                 pb.directory(resolvedWorkDir);
@@ -248,15 +249,17 @@ public class Engine {
                 }
             })).start();
 
-            bw.write("uci" + System.getProperty("line.separator"));
-            bw.flush();
+            if (!writeProbeCommand(bw, p, "uci")) {
+                return null;
+            }
             Thread.sleep(1000);
             if (f.get()) {
                 return "uci";
             }
 
-            bw.write("ucci" + System.getProperty("line.separator"));
-            bw.flush();
+            if (!writeProbeCommand(bw, p, "ucci")) {
+                return null;
+            }
             Thread.sleep(1000);
             if (f.get()) {
                 return "ucci";
@@ -285,6 +288,15 @@ public class Engine {
                 e.printStackTrace();
             }
         }
+    }
+
+    private static boolean writeProbeCommand(BufferedWriter bw, Process p, String command) throws IOException {
+        if (bw == null || p == null || !p.isAlive()) {
+            return false;
+        }
+        bw.write(command + System.lineSeparator());
+        bw.flush();
+        return true;
     }
 
     private boolean validateMove(String move) {

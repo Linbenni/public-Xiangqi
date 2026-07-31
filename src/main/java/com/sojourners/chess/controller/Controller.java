@@ -42,7 +42,6 @@ import javafx.scene.input.MouseEvent;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
-import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.util.Callback;
 
@@ -602,6 +601,14 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     }
 
     @FXML
+    void colorSettingClick(ActionEvent e) {
+        if (App.openColorSetting()) {
+            App.refreshTheme();
+            board.refresh();
+        }
+    }
+
+    @FXML
     private void bookSwitchButtonClick(ActionEvent e) {
         useOpenBook.setValue(!useOpenBook.getValue());
         prop.setBookSwitch(useOpenBook.getValue());
@@ -661,12 +668,11 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
                             Label title = new Label();
                             title.setText(item.getTitle());
-                            title.setTextFill(item.getScore() >= 0 ? Color.BLUE : Color.RED);
+                            setScoreStyle(title, item.getScore());
                             box.getChildren().add(title);
 
                             Label body = new Label();
                             body.setText(item.getBody());
-                            body.setTextFill(Color.BLACK);
                             body.setWrapText(true);
                             body.setMaxWidth(listView.getWidth() / 1.124);//bind(listView.widthProperty().divide(1.124));
                             box.getChildren().add(body);
@@ -839,28 +845,29 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         initBoardContextMenu();
         // 状态栏
         this.infoShowLabel.prefWidthProperty().bind(statusToolBar.widthProperty().subtract(120));
-        this.timeShowLabel.setText(prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_TIME ? "固定时间" + prop.getAnalysisValue() / 1000d + "s" : "固定深度" + prop.getAnalysisValue() + "层");
+        this.timeShowLabel.setText(getTimeStrategyString());
         this.statusToolBar.setVisible(prop.isLinkShowInfo());
     }
 
     private void initBoardContextMenu() {
-        BoardContextMenu.getInstance().setOnAction(new EventHandler<ActionEvent>() {
-            @Override
-            public void handle(ActionEvent event) {
-                MenuItem item = (MenuItem) event.getTarget();
-                if ("复制局面FEN".equals(item.getText())) {
-                    copyButtonClick(null);
-                } else if ("粘贴局面FEN".equals(item.getText())) {
-                    pasteButtonClick(null);
-                } else if ("交换行棋方".equals(item.getText())) {
-                    switchPlayer(true);
-                } else if ("编辑局面".equals(item.getText())) {
-                    editChessBoardClick(null);
-                } else if ("复制局面图片".equals(item.getText())) {
-                    copyImageMenuClick(null);
-                } else if ("粘贴局面图片".equals(item.getText())) {
-                    pasteImageMenuClick(null);
-                }
+        BoardContextMenu.getInstance().setOnAction(event -> {
+            MenuItem item = (MenuItem) event.getTarget();
+            if ("复制局面FEN".equals(item.getText())) {
+                copyButtonClick(null);
+            } else if ("粘贴局面FEN".equals(item.getText())) {
+                pasteButtonClick(null);
+            } else if ("交换行棋方".equals(item.getText())) {
+                switchPlayer(true);
+            } else if ("编辑局面".equals(item.getText())) {
+                editChessBoardClick(null);
+            } else if ("复制局面图片".equals(item.getText())) {
+                copyImageMenuClick(null);
+            } else if ("粘贴局面图片".equals(item.getText())) {
+                pasteImageMenuClick(null);
+            } else if ("复制棋谱".equals(item.getText())) {
+                chessManualHandle.copyChessManual();
+            } else if ("粘贴棋谱".equals(item.getText())) {
+                chessManualHandle.pasteChessManual();
             }
         });
     }
@@ -1087,12 +1094,24 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
     private void addListener(Button button, ObjectProperty property) {
         property.addListener((ChangeListener<Boolean>) (observableValue, aBoolean, t1) -> {
-            if (t1) {
-                button.getStylesheets().add(this.getClass().getResource("/style/selected-button.css").toString());
-            } else {
-                button.getStylesheets().remove(this.getClass().getResource("/style/selected-button.css").toString());
-            }
+            setButtonSelected(button, t1);
         });
+        setButtonSelected(button, Boolean.TRUE.equals(property.getValue()));
+    }
+
+    private void setButtonSelected(Button button, boolean selected) {
+        String selectedStylesheet = this.getClass().getResource("/style/selected-button.css").toString();
+        if (selected) {
+            if (!button.getStylesheets().contains(selectedStylesheet)) {
+                button.getStylesheets().add(selectedStylesheet);
+            }
+            if (!button.getStyleClass().contains("selected-state")) {
+                button.getStyleClass().add("selected-state");
+            }
+        } else {
+            button.getStylesheets().remove(selectedStylesheet);
+            button.getStyleClass().remove("selected-state");
+        }
     }
 
     private void loadEngine(String name) {
@@ -1164,8 +1183,8 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
                     if (prop.isLinkShowInfo()) {
                         infoShowLabel.setText(td.getTitle() + " | " + td.getBody());
-                        infoShowLabel.setTextFill(td.getScore() >= 0 ? Color.BLUE : Color.RED);
-                        timeShowLabel.setText(prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_TIME ? "固定时间" + prop.getAnalysisValue() / 1000d + "s" : "固定深度" + prop.getAnalysisValue() + "层");
+                        setScoreStyle(infoShowLabel, td.getScore());
+                        timeShowLabel.setText(getTimeStrategyString());
                     }
 
                     board.setTip(td.getDetail().get(0), td.getDetail().size() > 1 ? td.getDetail().get(1) : null, td.getPv());
@@ -1176,6 +1195,30 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
                 });
             }
         }
+    }
+
+    private String getTimeStrategyString() {
+        switch (prop.getAnalysisModel()) {
+            case Engine.AnalysisModel.FIXED_TIME:
+                return "固定时间" + prop.getAnalysisValue() / 1000d + "秒";
+            case Engine.AnalysisModel.FIXED_STEPS:
+                return "固定深度" + prop.getAnalysisValue() + "层";
+            case Engine.AnalysisModel.FIXED_NODES:
+                long nodes = prop.getAnalysisValue();
+                if (nodes > 1000) {
+                    nodes /= 1000;
+                    return "固定节点" + nodes + "K个";
+                } else {
+                    return "固定节点" + nodes + "个";
+                }
+            default:
+                return "";
+        }
+    }
+
+    private void setScoreStyle(Label label, double score) {
+        label.getStyleClass().removeAll("positive-score", "negative-score");
+        label.getStyleClass().add(score >= 0 ? "positive-score" : "negative-score");
     }
 
     @Override

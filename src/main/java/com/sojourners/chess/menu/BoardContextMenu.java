@@ -2,8 +2,6 @@ package com.sojourners.chess.menu;
 
 import com.sojourners.chess.config.Properties;
 import com.sojourners.chess.enginee.Engine;
-import javafx.event.ActionEvent;
-import javafx.event.EventHandler;
 import javafx.scene.control.*;
 
 public class BoardContextMenu extends ContextMenu {
@@ -27,6 +25,11 @@ public class BoardContextMenu extends ContextMenu {
         getItems().addAll(copyImageMenuItem, pasteImageMenuItem);
         getItems().add(new SeparatorMenuItem());
 
+        MenuItem copyManualMenuItem = new MenuItem("复制棋谱");
+        MenuItem pasteManualMenuItem = new MenuItem("粘贴棋谱");
+        getItems().addAll(copyManualMenuItem, pasteManualMenuItem);
+        getItems().add(new SeparatorMenuItem());
+
         Menu timeMenu = new Menu("对局时间");
         MenuItem timeOf01 = new MenuItem("0.1s");
         MenuItem timeOf03 = new MenuItem("0.3s");
@@ -37,17 +40,14 @@ public class BoardContextMenu extends ContextMenu {
         MenuItem timeOf5 = new MenuItem("5s");
         MenuItem timeOf10 = new MenuItem("10s");
         MenuItem timeOf15 = new MenuItem("15s");
-        timeMenu.setOnAction(new EventHandler<ActionEvent>() {
-            @Override
-            public void handle(ActionEvent event) {
-                String time = ((MenuItem) event.getTarget()).getText();
-                if (!"对局时间".equals(time)) {
-                    time = time.substring(0, time.length() - 1);
-                    long t = (long) (Double.parseDouble(time) * 1000);
-                    Properties prop = Properties.getInstance();
-                    prop.setAnalysisModel(Engine.AnalysisModel.FIXED_TIME);
-                    prop.setAnalysisValue(t);
-                }
+        timeMenu.setOnAction(event -> {
+            String time = ((MenuItem) event.getTarget()).getText();
+            if (!"对局时间".equals(time)) {
+                time = time.substring(0, time.length() - 1);
+                long t = (long) (Double.parseDouble(time) * 1000);
+                Properties prop = Properties.getInstance();
+                prop.setAnalysisModel(Engine.AnalysisModel.FIXED_TIME);
+                prop.setAnalysisValue(t);
             }
         });
         timeMenu.getItems().addAll(timeOf01, timeOf03, timeOf05, timeOf1, timeOf2, timeOf3, timeOf5, timeOf10, timeOf15);

@@ -2,11 +2,9 @@ package com.sojourners.chess.controller.handle;
 
 import com.sojourners.chess.App;
 import com.sojourners.chess.config.Properties;
-import com.sojourners.chess.manual.ChessManual;
-import com.sojourners.chess.manual.ChessManualService;
-import com.sojourners.chess.manual.PgnChessManualImpl;
-import com.sojourners.chess.manual.TxqChessManualImpl;
+import com.sojourners.chess.manual.*;
 import com.sojourners.chess.model.ManualRecord;
+import com.sojourners.chess.util.ClipboardUtils;
 import com.sojourners.chess.util.DialogUtils;
 import com.sojourners.chess.util.PathUtils;
 import com.sojourners.chess.util.StringUtils;
@@ -14,15 +12,16 @@ import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
 import javafx.event.ActionEvent;
-import javafx.fxml.FXML;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.*;
+import javafx.scene.control.skin.VirtualFlow;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.Dragboard;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.input.TransferMode;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
@@ -84,6 +83,8 @@ public class ChessManualHandle {
         manualServices = new HashMap<>();
         manualServices.put("txq", new TxqChessManualImpl());
         manualServices.put("pgn", new PgnChessManualImpl());
+        manualServices.put("xqf", new XqfChessManualImpl());
+        manualServices.put("cbr", new CbrChessManualImpl());
     }
 
     public ChessManualHandle(BorderPane chessManualPane, CheckMenuItem menuOfChessNotation, CheckMenuItem menuOfShowTactic, TreeView notationTree,
@@ -98,6 +99,7 @@ public class ChessManualHandle {
         this.menuOfChessNotation = menuOfChessNotation;
         this.menuOfShowTactic = menuOfShowTactic;
         this.notationTree = notationTree;
+        this.notationTree.getStyleClass().add("notation-tree");
         this.manualTitleLabel = manualTitleLabel;
         this.recordTable = recordTable;
         this.subRecordTable = subRecordTable;
@@ -167,20 +169,32 @@ public class ChessManualHandle {
     private void initRemarkText() {
         remarkText.textProperty().addListener((obs, oldV, newV) -> {
             if (!remarkText.isFocused()) return;
+
             recordTable.getItems().get(p).setRemark(newV);
+            if (StringUtils.isEmpty(oldV) != StringUtils.isEmpty(newV)) {
+                refreshRecordView(recordTable.getItems().get(p), null);
+            }
         });
     }
 
     private void initRecordTable() {
         TableColumn<ManualRecord, String> idCol = (TableColumn<ManualRecord, String>) recordTable.getColumns().get(0);
-        idCol.setCellValueFactory(new PropertyValueFactory<ManualRecord, String>("id"));
+        idCol.setCellValueFactory(new PropertyValueFactory<>("id"));
         TableColumn<ManualRecord, String> nameCol = (TableColumn<ManualRecord, String>) recordTable.getColumns().get(1);
-        nameCol.setCellValueFactory(cellData -> new SimpleStringProperty(
-                cellData.getValue().getList().size() > 1
-                        ? cellData.getValue().getCnMove() + "      b"
-                        : cellData.getValue().getCnMove()));
+        nameCol.setCellValueFactory(cellData -> {
+                String text = cellData.getValue().getCnMove() + "      ";
+                if (cellData.getValue().getList().size() > 1) {
+                    text += "b";
+                }
+                if (StringUtils.isNotEmpty(cellData.getValue().getRemark())) {
+                    text += "*";
+                }
+                return new SimpleStringProperty(text);
+            }
+        );
         TableColumn<ManualRecord, String> scoreCol = (TableColumn<ManualRecord, String>) recordTable.getColumns().get(2);
-        scoreCol.setCellValueFactory(new PropertyValueFactory<ManualRecord, String>("score"));
+        scoreCol.setCellValueFactory(new PropertyValueFactory<>("score"));
+
         subRecordTable.setCellFactory(lv -> {
             ListCell<ManualRecord> cell = new ListCell<>() {
                 @Override
@@ -201,6 +215,66 @@ public class ChessManualHandle {
                     this.cb.browseChessRecord(fenCode, getMoveList(), getRedGo(), nextList);
                 }
             });
+            cell.setOnDragDetected(evt -> {
+                if (cell.isEmpty()) {
+                    return;
+                }
+                Dragboard db = cell.startDragAndDrop(TransferMode.MOVE);
+                ClipboardContent content = new ClipboardContent();
+                content.putString(String.valueOf(cell.getIndex()));
+                db.setContent(content);
+                evt.consume();
+            });
+            cell.setOnDragOver(evt -> {
+                Dragboard db = evt.getDragboard();
+                if (db.hasString()) {
+                    int sourceIndex = Integer.parseInt(db.getString());
+                    int targetIndex = cell.isEmpty() ? subRecordTable.getItems().size() : cell.getIndex();
+                    if (sourceIndex != targetIndex) {
+                        evt.acceptTransferModes(TransferMode.MOVE);
+                    }
+                }
+                evt.consume();
+            });
+            cell.setOnDragDropped(evt -> {
+                Dragboard db = evt.getDragboard();
+                boolean success = false;
+                if (db.hasString()) {
+                    int sourceIndex = Integer.parseInt(db.getString());
+                    int targetIndex = cell.isEmpty() ? subRecordTable.getItems().size() : cell.getIndex();
+                    List<ManualRecord> items = recordTable.getItems().get(p).getList();
+                    int next = recordTable.getItems().get(p).getNext();
+                    if (sourceIndex >= 0 && sourceIndex < items.size() && sourceIndex != targetIndex && sourceIndex + 1 != targetIndex) {
+                        ManualRecord dragged = items.remove(sourceIndex);
+                        if (sourceIndex < targetIndex) {
+                            targetIndex--;
+                        }
+                        items.add(targetIndex, dragged);
+
+                        if (next == sourceIndex) {
+                            next = targetIndex;
+                        } else if (sourceIndex < targetIndex) {
+                            if (next > sourceIndex && next <= targetIndex) {
+                                next--;
+                            }
+                        } else {
+                            if (next < sourceIndex && next >= targetIndex) {
+                                next++;
+                            }
+                        }
+
+                        recordTable.getItems().get(p).setNext(next);
+                        refreshRecordView(null, items);
+                        subRecordTable.getSelectionModel().select(targetIndex);
+                        this.cb.setNextList(items.stream().map(ManualRecord::getMove).toList());
+
+                        success = true;
+                    }
+                }
+                evt.setDropCompleted(success);
+                evt.consume();
+            });
+            cell.setOnDragDone(evt -> evt.consume());
             return cell;
         });
     }
@@ -230,9 +304,11 @@ public class ChessManualHandle {
 
         ManualRecord currentRecord = recordTable.getItems().get(p);
         ManualRecord next = null;
-        for (ManualRecord mr : currentRecord.getList()) {
+        for (int i = 0; i < currentRecord.getList().size(); i++) {
+            ManualRecord mr = currentRecord.getList().get(i);
             if (mr.getMove().equals(move)) {
                 next = mr;
+                currentRecord.setNext(i);
                 break;
             }
         }
@@ -502,12 +578,35 @@ public class ChessManualHandle {
         return this.fenCode;
     }
 
+    public void copyChessManual() {
+        PgnChessManualImpl serv = (PgnChessManualImpl) manualServices.get("pgn");
+        String manualStr = "[FEN \"" + this.getFenCode() + "\"]";
+        manualStr += serv.getTextFromChessManual(this.manualHead, false);
+        manualStr += System.lineSeparator() + "来自TCHESS象棋软件";
+        ClipboardUtils.setText(manualStr);
+    }
+
+    public void pasteChessManual() {
+        PgnChessManualImpl serv = (PgnChessManualImpl) manualServices.get("pgn");
+        String txt = ClipboardUtils.getText();
+        ChessManual cm = serv.getChessManualFromText(txt);
+
+        openFromChessManual(cm);
+
+        this.manualFile = null;
+        manualTitleLabel.setText("未命名");
+
+    }
+
     public void openChessManualFile(ActionEvent actionEvent) {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setInitialDirectory(new File(
                 StringUtils.isNotEmpty(prop.getChessManualPath()) ? prop.getChessManualPath() : PathUtils.getJarPath()));
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("全部(*.*)", "*.txq", "*.pgn", "*.xqf", "*.cbr"));
         fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("txq(*.txq)", "*.txq"));
         fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("pgn(*.pgn)", "*.pgn"));
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("xqf(*.xqf)", "*.xqf"));
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("cbr(*.cbr)", "*.cbr"));
         File file = fileChooser.showOpenDialog(App.getMainStage());
         if (file != null) {
             openFromFile(file);
@@ -515,15 +614,20 @@ public class ChessManualHandle {
     }
 
     private void openFromFile(File file) {
-        String ext = PathUtils.getDotExtension(file);
+        String ext = PathUtils.getDotExtension(file).toLowerCase();
         ChessManual cm = manualServices.get(ext).openChessManual(file);
 
+        this.manualFile = file;
+        manualTitleLabel.setText(file.getName());
+
+        openFromChessManual(cm);
+    }
+
+    private void openFromChessManual(ChessManual cm) {
         this.fenCode = cm.getFenCode();
         this.manualHead = cm.getHead();
-        this.manualFile = file;
         this.p = 0;
 
-        manualTitleLabel.setText(file.getName());
         remarkText.setText(manualHead.getRemark());
 
         competitionNameText.setText(cm.getName());
@@ -676,18 +780,6 @@ public class ChessManualHandle {
                     }
                 });
                 ctx = new ContextMenu(open, rename, delete);
-                selectedProperty().addListener((obs, oldV, newV) -> {
-                    if (getItem() != null && !isEmpty() && getTreeItem() != null) {
-                        int row = notationTree.getRow(getTreeItem());
-                        if (newV) {
-                            setStyle("");
-                        } else {
-                            setStyle(row % 2 == 0 ? "-fx-background-color: #F5F7FA;" : "-fx-background-color: #FFFFFF;");
-                        }
-                    } else {
-                        setStyle("");
-                    }
-                });
                 addEventHandler(MouseEvent.MOUSE_CLICKED, evt -> {
                     if (evt.getButton() == MouseButton.PRIMARY && evt.getClickCount() == 2 && !isEmpty()) {
                         doOpen();
@@ -711,18 +803,9 @@ public class ChessManualHandle {
                     setText(null);
                     setContextMenu(null);
                     setGraphic(null);
-                    setStyle("");
                 } else {
                     setText(item.getName());
                     setContextMenu(ctx);
-                    if (getTreeItem() != null) {
-                        int row = notationTree.getRow(getTreeItem());
-                        if (isSelected()) {
-                            setStyle("");
-                        } else {
-                            setStyle(row % 2 == 0 ? "-fx-background-color: #F5F7FA;" : "-fx-background-color: #FFFFFF;");
-                        }
-                    }
                 }
             }
         });
@@ -759,7 +842,7 @@ public class ChessManualHandle {
     }
 
     private boolean isManualFile(File f) {
-        return f.isFile() && manualServices.containsKey(PathUtils.getDotExtension(f));
+        return f.isFile() && manualServices.containsKey(PathUtils.getDotExtension(f).toLowerCase());
     }
 
     private void deleteFile(File f) {
@@ -777,4 +860,5 @@ public class ChessManualHandle {
             f.delete();
         }
     }
+
 }

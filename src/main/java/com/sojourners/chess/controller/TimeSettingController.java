@@ -27,6 +27,12 @@ public class TimeSettingController {
     private TextField depthText;
 
     @FXML
+    private RadioButton fixNodeButton;
+
+    @FXML
+    private TextField nodeText;
+
+    @FXML
     private TextField engineDelayStart;
 
     @FXML
@@ -55,6 +61,14 @@ public class TimeSettingController {
                 return;
             }
             prop.setAnalysisModel(Engine.AnalysisModel.FIXED_STEPS);
+            prop.setAnalysisValue(Long.parseLong(txt));
+        } else if (fixNodeButton.isSelected()) {
+            String txt = nodeText.getText();
+            if (!StringUtils.isPositiveInt(txt)) {
+                DialogUtils.showErrorDialog("失败", "节点数错误");
+                return;
+            }
+            prop.setAnalysisModel(Engine.AnalysisModel.FIXED_NODES);
             prop.setAnalysisValue(Long.parseLong(txt));
         } else {
             String txt = timeText.getText();
@@ -101,11 +115,15 @@ public class TimeSettingController {
         ToggleGroup group = new ToggleGroup();
         fixTimeButton.setToggleGroup(group);
         fixDepthButton.setToggleGroup(group);
+        fixNodeButton.setToggleGroup(group);
 
         prop = Properties.getInstance();
         if (prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_TIME) {
             fixTimeButton.setSelected(true);
             timeText.setText(String.valueOf(prop.getAnalysisValue()));
+        } else if (prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_NODES) {
+            fixNodeButton.setSelected(true);
+            nodeText.setText(String.valueOf(prop.getAnalysisValue()));
         } else {
             fixDepthButton.setSelected(true);
             depthText.setText(String.valueOf(prop.getAnalysisValue()));

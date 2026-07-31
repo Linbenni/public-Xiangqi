@@ -53,6 +53,7 @@ public class Engine {
     public enum AnalysisModel {
         FIXED_TIME,
         FIXED_STEPS,
+        FIXED_NODES,
         INFINITE;
     }
 
@@ -340,6 +341,8 @@ public class Engine {
             cmd("go depth " + analysisValue + (hasTactics ? sb.toString() : ""));
         } else if (analysisModel == AnalysisModel.FIXED_TIME) {
             cmd("go movetime " + analysisValue + (hasTactics ? sb.toString() : ""));
+        } else if (analysisModel == AnalysisModel.FIXED_NODES) {
+            cmd("go nodes " + analysisValue + (hasTactics ? sb.toString() : ""));
         } else {
             cmd("go infinite" + (hasTactics ? sb.toString() : ""));
         }

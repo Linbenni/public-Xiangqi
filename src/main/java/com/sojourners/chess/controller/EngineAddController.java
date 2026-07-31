@@ -203,12 +203,12 @@ public class EngineAddController {
                             label.setText(item.getKey());
                             label.setAlignment(Pos.CENTER_LEFT);
                             label.setPrefHeight(27);
-                            label.setPrefWidth(100);
+                            label.setPrefWidth(155);
                             box.getChildren().add(label);
 
                             TextField input = new TextField();
                             input.setText(item.getValue());
-                            input.setPrefWidth(120);
+                            input.setPrefWidth(230);
                             input.textProperty().addListener(new ChangeListener<String>() {
                                 @Override
                                 public void changed(ObservableValue<? extends String> observableValue, String s, String t1) {

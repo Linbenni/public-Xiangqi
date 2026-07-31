@@ -15,6 +15,12 @@ public class Properties implements Serializable {
 
     private static final long serialVersionUID = -1410031608529065857L;
 
+    public static final String DEFAULT_FIRST_STEP_COLOR = "#800080";
+    public static final String DEFAULT_SECOND_STEP_COLOR = "#008000";
+    public static final String DEFAULT_BRANCH_STEP_COLOR = "#FF2F00";
+    public static final String DEFAULT_STEP_NUMBER_COLOR = "#FFFFFF";
+    public static final double DEFAULT_STEP_OPACITY = 0.5d;
+
     private static Properties prop;
 
     private ChessBoard.BoardSize boardSize;
@@ -85,6 +91,29 @@ public class Properties implements Serializable {
     private String chessManualPath;
 
     private boolean manualTip = true;
+
+    /*
+     * 棋步提示颜色。使用包装类型保存透明度，以便读取旧版序列化配置时
+     * 能区分“未配置”和用户明确选择的 0% 透明度。
+     */
+    private String firstStepColor;
+    private Double firstStepOpacity;
+    private String firstStepNumberColor;
+
+    private String secondStepColor;
+    private Double secondStepOpacity;
+    private String secondStepNumberColor;
+
+    private String branchStepColor;
+    private Double branchStepOpacity;
+    private String branchStepNumberColor;
+
+    private ColorTheme colorTheme;
+
+    public enum ColorTheme {
+        LIGHT,
+        DARK
+    }
 
     private Properties(ChessBoard.BoardSize boardSize, boolean stepTip,
                        int threadNum, int hashSize, String engineName, Engine.AnalysisModel analysisModel, long analysisValue,
@@ -477,5 +506,100 @@ public class Properties implements Serializable {
 
     public void setManualTip(boolean manualTip) {
         this.manualTip = manualTip;
+    }
+
+    public String getFirstStepColor() {
+        return colorOrDefault(firstStepColor, DEFAULT_FIRST_STEP_COLOR);
+    }
+
+    public void setFirstStepColor(String firstStepColor) {
+        this.firstStepColor = firstStepColor;
+    }
+
+    public double getFirstStepOpacity() {
+        return opacityOrDefault(firstStepOpacity);
+    }
+
+    public void setFirstStepOpacity(double firstStepOpacity) {
+        this.firstStepOpacity = normalizeOpacity(firstStepOpacity);
+    }
+
+    public String getFirstStepNumberColor() {
+        return colorOrDefault(firstStepNumberColor, DEFAULT_STEP_NUMBER_COLOR);
+    }
+
+    public void setFirstStepNumberColor(String firstStepNumberColor) {
+        this.firstStepNumberColor = firstStepNumberColor;
+    }
+
+    public String getSecondStepColor() {
+        return colorOrDefault(secondStepColor, DEFAULT_SECOND_STEP_COLOR);
+    }
+
+    public void setSecondStepColor(String secondStepColor) {
+        this.secondStepColor = secondStepColor;
+    }
+
+    public double getSecondStepOpacity() {
+        return opacityOrDefault(secondStepOpacity);
+    }
+
+    public void setSecondStepOpacity(double secondStepOpacity) {
+        this.secondStepOpacity = normalizeOpacity(secondStepOpacity);
+    }
+
+    public String getSecondStepNumberColor() {
+        return colorOrDefault(secondStepNumberColor, DEFAULT_STEP_NUMBER_COLOR);
+    }
+
+    public void setSecondStepNumberColor(String secondStepNumberColor) {
+        this.secondStepNumberColor = secondStepNumberColor;
+    }
+
+    public String getBranchStepColor() {
+        return colorOrDefault(branchStepColor, DEFAULT_BRANCH_STEP_COLOR);
+    }
+
+    public void setBranchStepColor(String branchStepColor) {
+        this.branchStepColor = branchStepColor;
+    }
+
+    public double getBranchStepOpacity() {
+        return opacityOrDefault(branchStepOpacity);
+    }
+
+    public void setBranchStepOpacity(double branchStepOpacity) {
+        this.branchStepOpacity = normalizeOpacity(branchStepOpacity);
+    }
+
+    public String getBranchStepNumberColor() {
+        return colorOrDefault(branchStepNumberColor, DEFAULT_STEP_NUMBER_COLOR);
+    }
+
+    public void setBranchStepNumberColor(String branchStepNumberColor) {
+        this.branchStepNumberColor = branchStepNumberColor;
+    }
+
+    public ColorTheme getColorTheme() {
+        return colorTheme == null ? ColorTheme.LIGHT : colorTheme;
+    }
+
+    public void setColorTheme(ColorTheme colorTheme) {
+        this.colorTheme = colorTheme;
+    }
+
+    private String colorOrDefault(String color, String defaultColor) {
+        return color == null || color.isBlank() ? defaultColor : color;
+    }
+
+    private double opacityOrDefault(Double opacity) {
+        return opacity == null ? DEFAULT_STEP_OPACITY : normalizeOpacity(opacity);
+    }
+
+    private double normalizeOpacity(double opacity) {
+        if (!Double.isFinite(opacity)) {
+            return DEFAULT_STEP_OPACITY;
+        }
+        return Math.max(0d, Math.min(1d, opacity));
     }
 }

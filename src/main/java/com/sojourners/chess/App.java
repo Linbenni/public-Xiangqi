@@ -1,5 +1,7 @@
 package com.sojourners.chess;
 
+import com.sojourners.chess.config.Properties;
+import com.sojourners.chess.controller.ColorSettingController;
 import com.sojourners.chess.controller.Controller;
 import com.sojourners.chess.controller.EditChessBoardController;
 import com.sojourners.chess.controller.LocalBookController;
@@ -7,20 +9,24 @@ import javafx.application.Application;
 import javafx.event.Event;
 import javafx.event.EventHandler;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.stage.Window;
 import javafx.stage.WindowEvent;
+
+import java.net.URL;
 
 /**
  * 主窗口
  */
 public class App extends Application {
 
-    public static final String VERSION = "1.8";
-    public static final String BUILT_ON = "20260301";
+    public static final String VERSION = "1.9";
+    public static final String BUILT_ON = "20260801";
 
     private static Stage engineAdd;
     private static Stage engineSetting;
@@ -31,13 +37,18 @@ public class App extends Application {
     private static Stage linkSetting;
     private static Stage editChessBoard;
 
+    private static final String LIGHT_THEME = themeResource("/style/light-theme.css");
+    private static final String DARK_THEME = themeResource("/style/dark-theme.css");
+
     @Override
     public void start(Stage primaryStage) throws Exception {
         FXMLLoader fxmlLoader = new FXMLLoader();
         fxmlLoader.setLocation(getClass().getResource("/fxml/app.fxml"));
         Parent root = fxmlLoader.load();
         primaryStage.setTitle("TCHESS  V" + VERSION);
-        primaryStage.setScene(new Scene(root));
+        Scene scene = new Scene(root);
+        applyTheme(scene);
+        primaryStage.setScene(scene);
         primaryStage.getIcons().add(new Image(getClass().getResourceAsStream("/image/icon.png")));
 
         primaryStage.setOnCloseRequest(new EventHandler() {
@@ -159,7 +170,9 @@ public class App extends Application {
             FXMLLoader fxmlLoader = new FXMLLoader();
             fxmlLoader.setLocation(App.class.getResource("/fxml/editChessBoard.fxml"));
             Parent pane = fxmlLoader.load();
-            stage.setScene(new Scene(pane));
+            Scene scene = new Scene(pane);
+            applyTheme(scene);
+            stage.setScene(scene);
 
             editChessBoard = stage;
             editChessBoard.setTitle("编辑局面");
@@ -182,13 +195,76 @@ public class App extends Application {
         editChessBoard.close();
     }
 
+    public static boolean openColorSetting() {
+        try {
+            Stage stage = new Stage();
+            FXMLLoader fxmlLoader = new FXMLLoader();
+            fxmlLoader.setLocation(App.class.getResource("/fxml/colorSetting.fxml"));
+            Parent pane = fxmlLoader.load();
+            Scene scene = new Scene(pane);
+            applyTheme(scene);
+            stage.setScene(scene);
+            stage.setTitle("主题配置");
+            stage.setResizable(false);
+            stage.initModality(Modality.APPLICATION_MODAL);
+            stage.initOwner(mainStage);
+
+            ColorSettingController controller = fxmlLoader.getController();
+            stage.showAndWait();
+            return controller.isSaved();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public static void refreshTheme() {
+        for (Window window : Window.getWindows()) {
+            if (window.getScene() != null) {
+                applyTheme(window.getScene());
+            }
+        }
+    }
+
+    public static void applyTheme(Scene scene) {
+        scene.getStylesheets().removeAll(LIGHT_THEME, DARK_THEME);
+        scene.getRoot().getStyleClass().removeAll("light-theme", "dark-theme");
+        String theme;
+        if (Properties.getInstance().getColorTheme() == Properties.ColorTheme.DARK) {
+            theme = DARK_THEME;
+            scene.getRoot().getStyleClass().add("dark-theme");
+        } else {
+            theme = LIGHT_THEME;
+            scene.getRoot().getStyleClass().add("light-theme");
+        }
+        scene.getStylesheets().add(theme);
+        applyThemeToLocalStylesheets(scene.getRoot(), theme);
+    }
+
+    private static void applyThemeToLocalStylesheets(Parent parent, String theme) {
+        boolean hasLocalStylesheet = parent.getStylesheets().stream()
+                .anyMatch(stylesheet -> !LIGHT_THEME.equals(stylesheet) && !DARK_THEME.equals(stylesheet));
+        parent.getStylesheets().removeAll(LIGHT_THEME, DARK_THEME);
+        if (hasLocalStylesheet) {
+            // 控件自身的样式表优先级高于 Scene 样式表，主题需要在其后加载。
+            parent.getStylesheets().add(theme);
+        }
+        for (Node child : parent.getChildrenUnmodifiable()) {
+            if (child instanceof Parent childParent) {
+                applyThemeToLocalStylesheets(childParent, theme);
+            }
+        }
+    }
+
     private static Stage createStage(String resource) {
         try {
             Stage stage = new Stage();
             FXMLLoader fxmlLoader = new FXMLLoader();
             fxmlLoader.setLocation(App.class.getResource(resource));
             Parent pane = fxmlLoader.load();
-            stage.setScene(new Scene(pane));
+            Scene scene = new Scene(pane);
+            applyTheme(scene);
+            stage.setScene(scene);
             return stage;
         } catch (Exception e) {
             e.printStackTrace();
@@ -210,5 +286,13 @@ public class App extends Application {
 
     public static Stage getLocalBookSetting() {
         return localBookSetting;
+    }
+
+    private static String themeResource(String resource) {
+        URL url = App.class.getResource(resource);
+        if (url == null) {
+            throw new IllegalStateException("找不到主题样式文件: " + resource);
+        }
+        return url.toExternalForm();
     }
 }

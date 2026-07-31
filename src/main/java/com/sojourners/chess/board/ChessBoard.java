@@ -440,6 +440,10 @@ public class ChessBoard {
                 showMultiPV, moveTips, isReverse, showNumber, manualTip, manualList);
     }
 
+    public void refresh() {
+        paint();
+    }
+
     /**
      * 设置翻转
      * @param isReverse
@@ -528,7 +532,7 @@ public class ChessBoard {
     public void autoFitSize(double width, double height, double position) {
         if (boardSize == BoardSize.AUTOFIT_BOARD) {
             if (Properties.getInstance().isShowChessNotation()) {
-                width = width - 240;
+                width = width - 256;
             }
             position = Math.abs(position);
             width = width * position;

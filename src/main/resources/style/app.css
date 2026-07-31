@@ -8,7 +8,20 @@
     -fx-background-color: #87CEEB;
 }
 
-.tree-cell:selected {
+.notation-tree .virtual-flow,
+.notation-tree .virtual-flow .clipped-container {
+    -fx-background-color: white;
+}
+
+.notation-tree .tree-cell:even {
+    -fx-background-color: -tchess-tree-even;
+}
+
+.notation-tree .tree-cell:odd {
+    -fx-background-color: -tchess-tree-odd;
+}
+
+.notation-tree .tree-cell:selected {
     -fx-background-color: #87CEEB;
 }
 

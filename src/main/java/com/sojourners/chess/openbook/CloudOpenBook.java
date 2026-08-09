@@ -37,16 +37,18 @@ public class CloudOpenBook implements OpenBook {
                     boolean finalPhase = false;
                     for (String item : items) {
                         String[] kvs = item.split(":");
-                        if ("move".equals(kvs[0])) {
-                            bd.setMove(kvs[1]);
-                        } else if ("score".equals(kvs[0])) {
-                            bd.setScore(Integer.parseInt(kvs[1]));
-                        } else if ("winrate".equals(kvs[0])) {
-                            bd.setWinRate(Double.parseDouble(kvs[1]));
-                        } else if ("note".equals(kvs[0])) {
-                            bd.setNote(kvs[1]);
-                            if (kvs[1].contains("W") || kvs[1].contains("D") || kvs[1].contains("L")) {
-                                finalPhase = true;
+                        if (kvs.length > 1) {
+                            if ("move".equals(kvs[0])) {
+                                bd.setMove(kvs[1]);
+                            } else if ("score".equals(kvs[0])) {
+                                bd.setScore(Integer.parseInt(kvs[1]));
+                            } else if ("winrate".equals(kvs[0])) {
+                                bd.setWinRate(Double.parseDouble(kvs[1]));
+                            } else if ("note".equals(kvs[0])) {
+                                bd.setNote(kvs[1]);
+                                if (kvs[1].contains("W") || kvs[1].contains("D") || kvs[1].contains("L")) {
+                                    finalPhase = true;
+                                }
                             }
                         }
                     }

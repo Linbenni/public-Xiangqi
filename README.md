@@ -15,3 +15,6 @@ TCHESS 是一款支持 uci 和 ucci 协议引擎的跨平台象棋界面程序�
 
 # 交流反馈
 Q群：1094058444
+
+# 声明
+本项目基于 [GPLv3](https://github.com/sojourners/public-Xiangqi/blob/master/LICENSE) 协议开源，你可以自由下载、使用、复制修改，但需遵守开源协议内容，禁止未经授权用于商业用途！

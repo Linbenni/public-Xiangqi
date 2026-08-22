@@ -15,6 +15,8 @@ public interface User32Extra extends User32 {
     int GetDpiForSystem();
     int GetDpiForWindow(WinDef.HWND hwnd);
 
+    short GetAsyncKeyState(int vKey);
+
     boolean GetCursorPos(long[] lpPoint); //use macros POINT_X() and POINT_Y() on long lpPoint[0]
     HWND WindowFromPoint(long point);
 }

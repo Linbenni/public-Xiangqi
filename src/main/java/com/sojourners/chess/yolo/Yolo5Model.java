@@ -5,6 +5,7 @@ import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OnnxValue;
 import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
+import com.sojourners.chess.util.LinkDiagnostics;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -27,13 +28,20 @@ public class Yolo5Model extends OnnxModel {
     public java.awt.Rectangle findBoardPosition(BufferedImage img) {
         try {
             if (img == null) {
+                modelLog("board_box_failed", "reason=null_image");
                 return null;
             }
             // 图像宽高的缩放比例
             List<DetectResult> results = this.predict(img);
+            modelLog("board_box_detections", "image=" + imageSize(img) + " detections=" + summarizeDetections(results));
+            if (results == null) {
+                modelLog("board_box_failed", "reason=null_model_output");
+                return null;
+            }
             // 寻找棋盘
             java.awt.Rectangle pos = findBoardPosition(results);
             if (pos == null) {
+                modelLog("board_box_failed", "reason=no_board_label detections=" + summarizeDetections(results));
                 return null;
             }
             // 棋盘范围
@@ -54,10 +62,11 @@ public class Yolo5Model extends OnnxModel {
             if (pos.y + pos.height > img.getHeight()) {
                 pos.height = img.getHeight() - pos.y;
             }
+            modelLog("board_box_succeeded", "image=" + imageSize(img) + " paddedBoard=" + rectangle(pos));
             return pos;
 
         } catch (Exception e) {
-            e.printStackTrace();
+            modelError("board_box_failed", e);
             return null;
         }
     }
@@ -104,16 +113,31 @@ public class Yolo5Model extends OnnxModel {
     public boolean findChessBoard(BufferedImage img, char[][] board) {
         try {
             if (img == null) {
+                modelLog("piece_mapping_failed", "reason=null_image");
                 return false;
             }
             // 图像宽高的缩放比例
             List<DetectResult> results = this.predict(img);
+            modelLog("piece_mapping_detections", "image=" + imageSize(img) + " detections=" + summarizeDetections(results));
+            if (results == null) {
+                modelLog("piece_mapping_failed", "reason=null_model_output");
+                return false;
+            }
             setBlankBoard(board);
             java.awt.Rectangle boardPos = findBoardPosition(results);
             if (boardPos == null) {
+                modelLog("piece_mapping_failed", "reason=no_board_label detections=" + summarizeDetections(results));
                 return false;
             }
             int pieceWidth = boardPos.width / 8, pieceHeight = boardPos.height / 9;
+            if (pieceWidth <= 0 || pieceHeight <= 0) {
+                modelLog("piece_mapping_failed", "reason=invalid_board_geometry board=" + rectangle(boardPos)
+                        + " cell=" + pieceWidth + "x" + pieceHeight);
+                return false;
+            }
+            int mappedPieces = 0;
+            int outsideBoard = 0;
+            int overwrittenSquares = 0;
             // 再获取每个棋子及其位置
             for (DetectResult obj : results) {
                 char label = obj.label;
@@ -122,15 +146,22 @@ public class Yolo5Model extends OnnxModel {
                     int j = (int) ((bound.x - (boardPos.x - pieceWidth / 2)) / pieceWidth);
                     int i = (int) ((bound.y - (boardPos.y - pieceHeight / 2)) / pieceHeight);
                     if (i < 0 || i > 9 || j < 0 || j > 8) {
+                        outsideBoard++;
                         continue;
                     }
+                    if (board[i][j] != ' ') {
+                        overwrittenSquares++;
+                    }
                     board[i][j] = label;
+                    mappedPieces++;
                 }
             }
+            modelLog("piece_mapping_succeeded", "board=" + rectangle(boardPos) + " cell=" + pieceWidth + "x" + pieceHeight
+                    + " mapped=" + mappedPieces + " outside=" + outsideBoard + " overwritten=" + overwrittenSquares);
             return true;
 
         } catch (Exception e) {
-            e.printStackTrace();
+            modelError("piece_mapping_failed", e);
             return false;
         }
     }
@@ -160,8 +191,39 @@ public class Yolo5Model extends OnnxModel {
         }
 
 //        System.gc();
-        System.out.println(System.currentTimeMillis() - s);
+        modelLog("inference_completed", "image=" + imageSize(image)
+                + " durationMs=" + (System.currentTimeMillis() - s)
+                + " detections=" + (list == null ? "null" : list.size()));
         return list;
+    }
+
+    private static void modelLog(String event, String fields) {
+        LinkDiagnostics.info("[LINK_MODEL] thread=" + Thread.currentThread().getName() + " event=" + event + " " + fields);
+    }
+
+    private static void modelError(String event, Exception error) {
+        LinkDiagnostics.error("[LINK_MODEL] thread=" + Thread.currentThread().getName() + " event=" + event
+                + " errorType=" + error.getClass().getName()
+                + " errorMessage=" + String.valueOf(error.getMessage()).replace('\n', ' ').replace('\r', ' '), error);
+    }
+
+    private static String imageSize(BufferedImage image) {
+        return image.getWidth() + "x" + image.getHeight();
+    }
+
+    private static String rectangle(java.awt.Rectangle rectangle) {
+        return rectangle.x + "," + rectangle.y + "," + rectangle.width + "x" + rectangle.height;
+    }
+
+    private static String summarizeDetections(List<DetectResult> results) {
+        if (results == null) {
+            return "null";
+        }
+        Map<Character, Integer> counts = new TreeMap<>();
+        for (DetectResult result : results) {
+            counts.merge(result.label, 1, Integer::sum);
+        }
+        return "total:" + results.size() + ",labels:" + counts;
     }
 
     float[][][] processInput(BufferedImage image, float rate) {

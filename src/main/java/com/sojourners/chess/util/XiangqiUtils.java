@@ -644,20 +644,34 @@ public class XiangqiUtils {
     }
 
     public static boolean validateChessBoard(char[][] board) {
+        return getChessBoardValidationError(board) == null;
+    }
+
+    /**
+     * Returns a machine-readable reason when a recognized board is illegal.
+     * A null return value means the board passed validation.
+     */
+    public static String getChessBoardValidationError(char[][] board) {
+        if (board == null || board.length != 10) {
+            return "invalid_dimensions rows=" + (board == null ? "null" : board.length);
+        }
         Map<Character, Integer> map = new HashMap<>(32);
         // 校验棋子位置是否合法
         for (int i = 0; i < 10; i++) {
+            if (board[i] == null || board[i].length != 9) {
+                return "invalid_dimensions row=" + i + " columns=" + (board[i] == null ? "null" : board[i].length);
+            }
             for (int j = 0; j < 9; j++) {
                 if ((board[i][j] == 'k' || board[i][j] == 'K') && ((i > 2 && i < 7) || j < 3 || j > 5)) {
-                    return false;
+                    return "invalid_piece_position piece=" + board[i][j] + " row=" + i + " column=" + j + " rule=king_palace";
                 }
                 if ((board[i][j] == 'b' || board[i][j] == 'B') &&
                         ((i != 0 && i != 2 && i != 4 && i != 5 && i != 7 && i != 9)
                                 || (j != 0 && j != 2 && j != 4 && j != 6 && j != 8))) {
-                    return false;
+                    return "invalid_piece_position piece=" + board[i][j] + " row=" + i + " column=" + j + " rule=elephant_points";
                 }
                 if ((board[i][j] == 'a' || board[i][j] == 'A') && ((i > 2 && i < 7) || j < 3 || j > 5 || (i <= 2 && (i + j) % 2 == 0) || (i >= 7 && (i + j) % 2 == 1))) {
-                    return false;
+                    return "invalid_piece_position piece=" + board[i][j] + " row=" + i + " column=" + j + " rule=advisor_points";
                 }
                 if (board[i][j] != ' ') {
                     if (map.containsKey(board[i][j])) {
@@ -674,19 +688,19 @@ public class XiangqiUtils {
             Integer value = entry.getValue();
             if (key == 'r' || key == 'R' || key == 'b' || key == 'B' || key == 'a' || key == 'A' || key == 'c' || key == 'C' || key == 'n' || key == 'N') {
                 if (value > 2) {
-                    return false;
+                    return "invalid_piece_count piece=" + key + " count=" + value + " max=2";
                 }
             }
             if (key == 'p' || key == 'P') {
                 if (value > 5) {
-                    return false;
+                    return "invalid_piece_count piece=" + key + " count=" + value + " max=5";
                 }
             }
         }
         if (map.get('k') == null || map.get('k') != 1 || map.get('K') == null || map.get('K') != 1) {
-            return false;
+            return "invalid_king_count black=" + map.getOrDefault('k', 0) + " red=" + map.getOrDefault('K', 0) + " expected=1_each";
         }
-        return true;
+        return null;
     }
 
     public static boolean isReverse(String fenCode) {

@@ -413,6 +413,15 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         linkMode.setValue(false);
     }
 
+    @Override
+    public void linkerSelectionCancelled() {
+        Platform.runLater(() -> {
+            if (linkMode.getValue()) {
+                stopGraphLink();
+            }
+        });
+    }
+
     private void engineGo() {
         if (engine == null) {
             DialogUtils.showWarningDialog("提示", "引擎未加载");

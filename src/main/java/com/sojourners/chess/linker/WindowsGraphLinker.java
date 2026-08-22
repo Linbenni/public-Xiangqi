@@ -6,10 +6,14 @@ import com.sojourners.chess.mouse.GlobalMouseListener;
 import com.sojourners.chess.mouse.MouseListenCallBack;
 import com.sojourners.chess.util.PathUtils;
 import com.sun.jna.Memory;
+import com.sun.jna.Native;
+import com.sun.jna.Pointer;
 import com.sun.jna.platform.win32.*;
+import com.sun.jna.ptr.IntByReference;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class WindowsGraphLinker extends AbstractGraphLinker implements MouseListenCallBack {
 
@@ -17,42 +21,151 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
     private GlobalMouseListener listener;
     private double screenScalingFactor;
     private boolean needScaling;
+    private final AtomicBoolean selectionPending = new AtomicBoolean(false);
+    private Thread selectionPollThread;
 
     public WindowsGraphLinker(LinkerCallBack callBack) throws AWTException {
         super(callBack);
         this.listener = new GlobalMouseListener(this);
         // 分辨率缩放系数
         this.screenScalingFactor = getScreenScalingFactor();
+        log("windows_linker_initialized", "screenScale=" + this.screenScalingFactor);
     }
 
     @Override
     public void getTargetWindowId() {
+        if (!selectionPending.compareAndSet(false, true)) {
+            log("selection_ignored", "reason=already_pending");
+            return;
+        }
         try {
             this.listener.startListenMouse();
             selectCursor();
+            startTargetSelectionPolling();
+            log("selection_ready", "message=click_target_board");
 
         } catch (Exception e) {
-            e.printStackTrace();
+            cancelPendingSelection("start_failed");
+            logError("selection_failed", "stage=start_mouse_listener", e);
         }
     }
     @Override
     public void mouseClick() {
-        try {
-            this.listener.stopListenMouse();
-            restoreCursor();
+        trySelectTarget("native_hook");
+    }
 
+    private void trySelectTarget(String source) {
+        if (!selectionPending.get()) {
+            log("selection_click_ignored", "source=" + source + " reason=selection_not_pending");
+            return;
+        }
+        try {
             long[] getPos = new long[1];
-            User32Extra.INSTANCE.GetCursorPos(getPos);
-            this.hwnd = User32Extra.INSTANCE.WindowFromPoint(getPos[0]);
+            if (!User32Extra.INSTANCE.GetCursorPos(getPos)) {
+                log("selection_failed", "source=" + source + " stage=get_cursor_pos lastError=" + Kernel32.INSTANCE.GetLastError());
+                return;
+            }
+            WinDef.HWND candidate = User32Extra.INSTANCE.WindowFromPoint(getPos[0]);
+            int cursorX = (int) getPos[0];
+            int cursorY = (int) (getPos[0] >> 32);
+            if (candidate == null) {
+                log("selection_failed", "source=" + source + " stage=window_from_point cursor=" + cursorX + "," + cursorY + " reason=null_hwnd");
+                return;
+            }
+
+            trySelectWindow(candidate, source, cursorX, cursorY);
+
+        } catch (Exception e) {
+            logError("selection_failed", "source=" + source + " stage=resolve_target_window", e);
+        }
+    }
+
+    private void trySelectWindow(WinDef.HWND candidate, String source, int cursorX, int cursorY) {
+        try {
+            long targetProcessId = getWindowProcessId(candidate);
+            if (targetProcessId == ProcessHandle.current().pid()) {
+                log("target_window_rejected", "source=" + source + " reason=self_window cursor=" + cursorX + "," + cursorY + " " + windowDetails(candidate));
+                cancelPendingSelection("self_window");
+                notifySelectionCancelled();
+                return;
+            }
+
+            if (!selectionPending.compareAndSet(true, false)) {
+                log("selection_click_ignored", "source=" + source + " reason=claimed_by_other_detector");
+                return;
+            }
+
+            this.hwnd = candidate;
+            stopTargetSelectionMechanisms("target_selected");
 
             this.needScaling = needScaling(this.hwnd);
+            log("target_window_selected", "source=" + source + " cursor=" + cursorX + "," + cursorY + " " + windowDetails(this.hwnd)
+                    + " screenScale=" + screenScalingFactor + " needScaling=" + needScaling);
 
             scan();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            logError("selection_failed", "source=" + source + " stage=resolve_target_window", e);
         }
+    }
 
+    @Override
+    public void stop() {
+        cancelPendingSelection("link_stopped");
+        super.stop();
+    }
+
+    private void cancelPendingSelection(String reason) {
+        if (!selectionPending.compareAndSet(true, false)) {
+            return;
+        }
+        stopTargetSelectionMechanisms(reason);
+        log("selection_cancelled", "reason=" + reason);
+    }
+
+    private void startTargetSelectionPolling() {
+        this.selectionPollThread = Thread.ofVirtual().name("link-target-selection-poll").unstarted(() -> {
+            boolean wasPressed = isLeftButtonPressed();
+            while (selectionPending.get() && !Thread.currentThread().isInterrupted()) {
+                WinDef.HWND foregroundWindow = User32.INSTANCE.GetForegroundWindow();
+                if (foregroundWindow != null
+                        && getWindowProcessId(foregroundWindow) != ProcessHandle.current().pid()) {
+                    log("selection_foreground_target_detected", "source=foreground_poll " + windowDetails(foregroundWindow));
+                    trySelectWindow(foregroundWindow, "foreground_poll", -1, -1);
+                    continue;
+                }
+
+                boolean pressed = isLeftButtonPressed();
+                if (pressed && !wasPressed) {
+                    log("selection_poll_detected_press", "source=async_key_poll");
+                    trySelectTarget("async_key_poll");
+                }
+                wasPressed = pressed;
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        });
+        this.selectionPollThread.start();
+    }
+
+    private boolean isLeftButtonPressed() {
+        return (User32Extra.INSTANCE.GetAsyncKeyState(0x01) & 0x8000) != 0;
+    }
+
+    private void stopTargetSelectionMechanisms(String reason) {
+        try {
+            this.listener.stopListenMouse();
+        } catch (Exception e) {
+            logError("selection_cancel_failed", "reason=" + reason + " stage=stop_mouse_listener", e);
+        } finally {
+            if (selectionPollThread != null && selectionPollThread != Thread.currentThread()) {
+                selectionPollThread.interrupt();
+            }
+            restoreCursor();
+        }
     }
 
     private boolean needScaling(WinDef.HWND hwnd) {
@@ -60,8 +173,38 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
         int systemDpi = User32Extra.INSTANCE.GetDpiForSystem();
         // 通过窗口句柄获取当前窗口的DPI
         int windowDpi = User32Extra.INSTANCE.GetDpiForWindow(hwnd);
+        log("target_dpi_detected", "systemDpi=" + systemDpi + " windowDpi=" + windowDpi);
         // 比较系统DPI和窗口DPI是否相同，如果不同则需要缩放处理
         return systemDpi != windowDpi;
+    }
+
+    private static long getWindowProcessId(WinDef.HWND hwnd) {
+        IntByReference processId = new IntByReference();
+        User32.INSTANCE.GetWindowThreadProcessId(hwnd, processId);
+        return Integer.toUnsignedLong(processId.getValue());
+    }
+
+    private static String windowDetails(WinDef.HWND hwnd) {
+        char[] title = new char[256];
+        char[] className = new char[256];
+        User32.INSTANCE.GetWindowText(hwnd, title, title.length);
+        User32.INSTANCE.GetClassName(hwnd, className, className.length);
+        IntByReference processId = new IntByReference();
+        User32.INSTANCE.GetWindowThreadProcessId(hwnd, processId);
+        WinDef.RECT windowRect = new WinDef.RECT();
+        WinDef.RECT clientRect = new WinDef.RECT();
+        User32.INSTANCE.GetWindowRect(hwnd, windowRect);
+        User32.INSTANCE.GetClientRect(hwnd, clientRect);
+        return "hwnd=" + Pointer.nativeValue(hwnd.getPointer())
+                + " pid=" + processId.getValue()
+                + " class=" + quote(Native.toString(className))
+                + " title=" + quote(Native.toString(title))
+                + " windowRect=" + windowRect.left + "," + windowRect.top + "," + (windowRect.right - windowRect.left) + "x" + (windowRect.bottom - windowRect.top)
+                + " clientSize=" + (clientRect.right - clientRect.left) + "x" + (clientRect.bottom - clientRect.top);
+    }
+
+    private static String quote(String value) {
+        return '"' + value.replace('"', '\'').replace('\n', ' ').replace('\r', ' ') + '"';
     }
 
     @Override
@@ -85,6 +228,7 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
 
     @Override
     public BufferedImage screenshotByBack(Rectangle windowPos) {
+        log("background_capture_requested", "rect=" + (windowPos == null ? "full_client" : windowPos.x + "," + windowPos.y + "," + windowPos.width + "x" + windowPos.height));
         return capture(this.hwnd, windowPos);
     }
 
@@ -137,6 +281,8 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
             WinNT.HANDLE hOld = GDI32.INSTANCE.SelectObject(hdcMemDC, hBitmap);
             // 请求窗口自行完成绘制工作
             if (!User32.INSTANCE.PrintWindow(hWnd, hdcMemDC, 0x1 | 0x2)) {
+                log("background_capture_failed", "stage=print_window flags=3 lastError=" + Kernel32.INSTANCE.GetLastError()
+                        + " " + windowDetails(hWnd));
                 return null;
             }
 
@@ -170,7 +316,8 @@ public class WindowsGraphLinker extends AbstractGraphLinker implements MouseList
             return image;
 
         } catch (Exception e) {
-            e.printStackTrace();
+            logError("background_capture_failed", "stage=convert_bitmap rect="
+                    + (rect == null ? "full_client" : rect.x + "," + rect.y + "," + rect.width + "x" + rect.height), e);
             return null;
         } finally {
             // 清理设备上下文对象

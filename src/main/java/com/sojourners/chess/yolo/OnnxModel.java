@@ -3,6 +3,7 @@ package com.sojourners.chess.yolo;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
 import com.sojourners.chess.config.Properties;
+import com.sojourners.chess.util.LinkDiagnostics;
 import com.sojourners.chess.util.PathUtils;
 
 import java.awt.image.BufferedImage;
@@ -22,18 +23,25 @@ public abstract class OnnxModel {
     OrtEnvironment env;
 
     public OnnxModel() {
+        String path = null;
         try {
             env = OrtEnvironment.getEnvironment();
 
             OrtSession.SessionOptions opt = new OrtSession.SessionOptions();
             opt.setIntraOpNumThreads(Properties.getInstance().getLinkThreadNum());
 
-            String path = PathUtils.getJarPath() + getModelPath();
+            path = PathUtils.getJarPath() + getModelPath();
 
             session = env.createSession(path, opt);
+            LinkDiagnostics.info("[LINK_MODEL] thread=" + Thread.currentThread().getName()
+                    + " event=model_loaded path=" + path
+                    + " threads=" + Properties.getInstance().getLinkThreadNum());
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LinkDiagnostics.error("[LINK_MODEL] thread=" + Thread.currentThread().getName()
+                    + " event=model_load_failed path=" + path
+                    + " errorType=" + e.getClass().getName()
+                    + " errorMessage=" + String.valueOf(e.getMessage()).replace('\n', ' ').replace('\r', ' '), e);
         }
     }
 

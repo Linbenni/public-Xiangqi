@@ -104,17 +104,20 @@ UI 为原生触屏体验。
 - [x] 单测：FEN round-trip、UCI 协议端到端（FakeProcessStarter）、translateMoves 快照不变式；`verifyPureJava` 依赖约束任务挂入 check
 - 验收结果：core 8 测试全绿；桌面 `mvn clean package` 全量回归通过；core 通过纯净性检查（无 javafx/awt/jna/jnativehook/java.sql/虚拟线程）
 
-### M2 安卓 MVP：对弈闭环（2~3 周）★ 最大技术风险在此消化
-- [ ] Pikafish NDK 编译脚本（Makefile `arch=x86-64-android`/arm64），strip 后改名
+### M2 安卓 MVP：对弈闭环（2~3 周）★ 最大技术风险在此消化 —— 代码完成 ✅（真机验收待引擎二进制）
+- [x] Pikafish NDK 编译脚本（`scripts/build-pikafish.sh`，arm64-v8a/x86_64），strip 后改名
       `libpikafish.so` 放 `jniLibs/`；打包开启 `useLegacyPackaging=true`（保证解压出可执行位）
-- [ ] `AndroidProcessStarter`：从 `applicationInfo.nativeLibraryDir` 启动引擎，
-      stdin/stdout 接入 core 协议层
-- [ ] 主界面：Compose Canvas 棋盘（复用 `ui/*.png`、`chessman.ttf`），触屏选子/
-      合法着法提示/走子动画；交互规则移植自 `ChessBoard` 的点击映射逻辑
-- [ ] 对局流程：先后手选择、人机双方、悔棋、新局、认输、胜负判定音效
-- [ ] 音效 SoundPool（复用 wav）、触感反馈
-- [ ] 生命周期：对局中前台 Service 保引擎进程；被杀后恢复局面
-- 验收标准：真机完成一整局人机对弈；切后台返回正常；无崩溃
+- [x] `AndroidProcessStarter`：从 `applicationInfo.nativeLibraryDir` 启动引擎，
+      stdin/stdout 接入 core 协议层；NNUE 可选 assets 释放 + EvalFile 注入；引擎缺失兜底（仅双人模式）
+- [x] 主界面：Compose Canvas 棋盘（复用 `ui/board.png` 与棋子 PNG），触屏选子/
+      合法着法提示/吃子环/将军警示/走子动画；几何移植自 `BaseBoardRender`（`ui/board/BoardGeometry.kt`）
+- [x] 对局流程：先后手选择（执红/执黑/双人）、人机双方、悔棋、新局、认输、胜负判定音效
+      （难度=固定时间制：快棋1s/均衡3s/深思8s）
+- [x] 音效 SoundPool（复用 wav）、触感反馈
+- [x] 生命周期：对局中前台 Service 保引擎进程；被杀后恢复局面（JSON 存档+自动续算）
+- [x] 构建验证：`:android-app:assembleDebug` 通过、安卓 JVM 单测与 `:core:test` 回归通过；
+      CI 增加 android job；实现说明见 `docs/android-m2.md`
+- [ ] 真机验收：放入 libpikafish.so 完成一整局人机对弈、切后台返回正常、无崩溃（待 arm64 真机）
 
 ### M3 分析功能（1~2 周）
 - [ ] 分析面板：MultiPV 变化列表、评估柱、思考数据表格（ThinkData 直接复用）

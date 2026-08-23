@@ -3,4 +3,9 @@ target/
 .gradle/
 build/
 core/build/
+android-app/build/
+android-app/local.properties
+.gradle-home/
 output/
+*.iml
+.idea/

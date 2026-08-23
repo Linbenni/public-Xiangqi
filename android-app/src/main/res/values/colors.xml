@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 与桌面棋盘背景色一致的暖木色 -->
+    <color name="tchess_background">#E8D5B0</color>
+</resources>

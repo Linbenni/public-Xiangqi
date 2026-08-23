@@ -10,9 +10,7 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
-repositories {
-    mavenCentral()
-}
+// 仓库统一由根 settings.gradle.kts 提供（google + mavenCentral）
 
 dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.2"))

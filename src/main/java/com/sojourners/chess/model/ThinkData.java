@@ -21,7 +21,15 @@ public class ThinkData {
 
     private Long time;
 
+    private Long nodes;
+
     private List<String> detail;
+
+    private List<String> translatedMoves;
+
+    private Boolean redFirst;
+
+    private Integer redScore;
 
     private String title;
 
@@ -34,6 +42,7 @@ public class ThinkData {
     }
 
     public void generate(boolean redGo, boolean isReverse, ChessBoard board) {
+        redFirst = redGo;
         // 生成title
         StringBuilder sb = new StringBuilder();
         sb.append("深度: ").append(depth).append("  ");
@@ -48,6 +57,7 @@ public class ThinkData {
             sb.append("分数: ");
             score = score;
         }
+        redScore = redGo ? score : -score;
         if (redGo && isReverse || !redGo && !isReverse) {
             score = -score;
         }
@@ -58,7 +68,8 @@ public class ThinkData {
         sb.append("时间: ").append(String.format("%.1fs", time / 1000D));
         title = sb.toString();
         // 生成body
-        body = board.translate(detail);
+        translatedMoves = board.translateMoves(detail);
+        body = String.join("  ", translatedMoves);
         // 是否有效（处理分析模式下null数据）
         isValid = !body.contains("null");
     }
@@ -127,12 +138,32 @@ public class ThinkData {
         this.time = time;
     }
 
+    public Long getNodes() {
+        return nodes;
+    }
+
+    public void setNodes(Long nodes) {
+        this.nodes = nodes;
+    }
+
     public List<String> getDetail() {
         return detail;
     }
 
     public void setDetail(List<String> detail) {
         this.detail = detail;
+    }
+
+    public List<String> getTranslatedMoves() {
+        return translatedMoves;
+    }
+
+    public Boolean getRedFirst() {
+        return redFirst;
+    }
+
+    public Integer getRedScore() {
+        return redScore;
     }
 
     public Integer getPv() {

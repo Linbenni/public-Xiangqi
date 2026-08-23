@@ -21,8 +21,6 @@ public class ChessBoard {
 
     private static volatile char[][] board = new char[10][9];
 
-    private static char[][] copyBoard = new char[10][9];
-
     private BoardSize boardSize;
 
     private boolean stepTip;
@@ -508,21 +506,29 @@ public class ChessBoard {
      * @return
      */
     public String translate(List<String> moveList) {
+        return String.join("  ", translateMoves(moveList));
+    }
+
+    /**
+     * 按引擎主变顺序逐步翻译着法，供结构化分析面板分别渲染每一手。
+     */
+    public List<String> translateMoves(List<String> moveList) {
+        char[][] analysisBoard = new char[10][9];
         for (int i = 0; i < board.length; i++) {
-            System.arraycopy(board[i], 0, copyBoard[i], 0, copyBoard[i].length);
+            System.arraycopy(board[i], 0, analysisBoard[i], 0, analysisBoard[i].length);
         }
-        StringBuilder sb = new StringBuilder();
+        List<String> translatedMoves = new ArrayList<>();
         for (String move : moveList) {
             char a = move.charAt(0), b = move.charAt(1), c = move.charAt(2), d = move.charAt(3);
             int fromJ = a - 'a', toJ = c - 'a';
             int fromI = 9 - Integer.parseInt(String.valueOf(b)), toI = 9 - Integer.parseInt(String.valueOf(d));
-            XiangqiUtils.translate(copyBoard, sb, move, false);
-            sb.append("  ");
-            copyBoard[toI][toJ] = copyBoard[fromI][fromJ];
-            copyBoard[fromI][fromJ] = ' ';
+            StringBuilder translatedMove = new StringBuilder();
+            XiangqiUtils.translate(analysisBoard, translatedMove, move, false);
+            translatedMoves.add(translatedMove.toString());
+            analysisBoard[toI][toJ] = analysisBoard[fromI][fromJ];
+            analysisBoard[fromI][fromJ] = ' ';
         }
-        sb.delete(sb.length() - 2, sb.length());
-        return sb.toString();
+        return translatedMoves;
     }
 
     public char[][] getBoard() {

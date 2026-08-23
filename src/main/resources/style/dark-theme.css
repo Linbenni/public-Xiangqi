@@ -265,6 +265,74 @@
     -fx-text-fill: #ee858c;
 }
 
+.dark-theme .analysis-list,
+.dark-theme .analysis-list .virtual-flow,
+.dark-theme .analysis-list .virtual-flow .clipped-container,
+.dark-theme .analysis-list .list-cell,
+.dark-theme .analysis-list .list-cell:even,
+.dark-theme .analysis-list .list-cell:odd,
+.dark-theme .analysis-list .list-cell:selected {
+    -fx-background-color: #292e2b;
+}
+
+.dark-theme .analysis-card {
+    -fx-background-color: #343a36;
+    -fx-border-color: #4b554f;
+}
+
+.dark-theme .analysis-card:hover {
+    -fx-background-color: #3b433e;
+    -fx-border-color: #69766f;
+}
+
+.dark-theme .analysis-list .list-cell:selected .analysis-card {
+    -fx-background-color: #3c4841;
+    -fx-border-color: #7b9f89;
+}
+
+.dark-theme .pv-rank {
+    -fx-background-color: #465049;
+    -fx-text-fill: #c8d1cb;
+}
+
+.dark-theme .pv-rank.pv-best {
+    -fx-background-color: #3d654f;
+    -fx-text-fill: #d9f0e1;
+}
+
+.dark-theme .pv-first-move {
+    -fx-text-fill: #edf2ef;
+}
+
+.dark-theme .pv-depth,
+.dark-theme .move-number,
+.dark-theme .pv-more {
+    -fx-text-fill: #9ca8a0;
+}
+
+.dark-theme .red-evaluation,
+.dark-theme .red-move {
+    -fx-text-fill: #ee858c;
+}
+
+.dark-theme .black-evaluation,
+.dark-theme .black-move {
+    -fx-text-fill: #8fb8df;
+}
+
+.dark-theme .balanced-evaluation {
+    -fx-text-fill: #bdc7c0;
+}
+
+.dark-theme .analysis-status-bar {
+    -fx-background-color: #303632;
+    -fx-border-color: #454e48 transparent transparent transparent;
+}
+
+.dark-theme .analysis-status-bar .label {
+    -fx-text-fill: #b9c4bc;
+}
+
 .dark-theme .chart,
 .dark-theme .chart-plot-background {
     -fx-background-color: #303632;

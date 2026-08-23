@@ -48,7 +48,9 @@ public class Engine {
 
     private Random random;
 
-    private int multiPV;
+    private final String multiPVOptionName;
+    private volatile boolean multiPVChange;
+    private int multiPV = 1;
 
     public enum AnalysisModel {
         FIXED_TIME,
@@ -64,11 +66,11 @@ public class Engine {
 
         this.time = Integer.MAX_VALUE;
 
-        if (ec.getOptions().get("MultiPV") != null) {
-            multiPV = Integer.parseInt(ec.getOptions().get("MultiPV"));
-        } else {
-            multiPV = 1;
-        }
+        multiPVOptionName = ec.getOptions().keySet().stream()
+                .filter(name -> "MultiPV".equalsIgnoreCase(name))
+                .findFirst()
+                .orElse(null);
+        multiPVChange = supportsMultiPV();
 
         process = Runtime.getRuntime().exec(ec.getPath(), null, PathUtils.getParentDir(ec.getPath()));
         reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -93,6 +95,10 @@ public class Engine {
         cmd(protocol);
 
         for (Map.Entry<String, String> entry : ec.getOptions().entrySet()) {
+            // MultiPV 由全局时间设置统一管理，旧的单引擎值仅保留用于配置兼容。
+            if (entry.getKey().equalsIgnoreCase("MultiPV")) {
+                continue;
+            }
             if ("uci".equals(this.protocol)) {
                 cmd("setoption name " + entry.getKey() + " value " + entry.getValue());
             } else if ("ucci".equals(this.protocol)) {
@@ -103,6 +109,10 @@ public class Engine {
 
     public int getMultiPV() {
         return multiPV;
+    }
+
+    public boolean supportsMultiPV() {
+        return multiPVOptionName != null;
     }
 
     private void sleep(long t) {
@@ -242,6 +252,9 @@ public class Engine {
 
                         } else if (flag == 7) {
                             td.setPv(Integer.parseInt(str[i]));
+
+                        } else if (flag == 8) {
+                            td.setNodes(Long.parseLong(str[i]));
                         }
                         flag = 0;
                     } else {
@@ -267,6 +280,8 @@ public class Engine {
                     flag = 6;
                 } else if ("multipv".equals(str[i])) {
                     flag = 7;
+                } else if ("nodes".equals(str[i])) {
+                    flag = 8;
                 }
             }
         }
@@ -317,6 +332,14 @@ public class Engine {
         if (hashSizeChange) {
             cmd(("uci".equals(this.protocol) ? "setoption name Hash value " : "setoption Hash ") + hashSize);
             this.hashSizeChange = false;
+        }
+        if (multiPVChange) {
+            if (supportsMultiPV()) {
+                cmd(("uci".equals(this.protocol)
+                        ? "setoption name " + multiPVOptionName + " value "
+                        : "setoption " + multiPVOptionName + " ") + multiPV);
+            }
+            this.multiPVChange = false;
         }
 
         StringBuilder sb = new StringBuilder();
@@ -379,6 +402,14 @@ public class Engine {
         if (hashSize != this.hashSize) {
             this.hashSize = hashSize;
             this.hashSizeChange = true;
+        }
+    }
+
+    public void setMultiPV(int multiPV) {
+        int effectiveValue = supportsMultiPV() ? Math.max(1, multiPV) : 1;
+        if (effectiveValue != this.multiPV) {
+            this.multiPV = effectiveValue;
+            this.multiPVChange = supportsMultiPV();
         }
     }
 

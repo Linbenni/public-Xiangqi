@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
 
     private static final AtomicLong SESSION_SEQUENCE = new AtomicLong();
+    private static final int MAX_AUTO_CLICK_ATTEMPTS = 3;
 
     /**
      * 扫描线程
@@ -52,6 +53,14 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
 
     private long boardReadAttempt;
 
+    private Action lastAutoClickAction;
+
+    private String lastAutoClickBoardLayout;
+
+    private int autoClickAttemptCount;
+
+    private boolean autoClickSuppressedLogged;
+
     public AbstractGraphLinker(LinkerCallBack callBack) throws AWTException {
         this.callBack = callBack;
         robot = new Robot();
@@ -69,6 +78,7 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
         this.sessionId = Long.toString(SESSION_SEQUENCE.incrementAndGet());
         this.boardSearchAttempt = 0;
         this.boardReadAttempt = 0;
+        resetAutoClickRetry();
         log("selection_started", "backMode=" + prop.isLinkBackMode()
                 + " scanMs=" + prop.getLinkScanTime()
                 + " modelThreads=" + prop.getLinkThreadNum()
@@ -148,6 +158,7 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
                     }
 
                     if (isSame(board2, callBack.getEngineBoard())) {
+                        resetAutoClickRetry();
                         continue;
                     }
 
@@ -181,9 +192,17 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
                     if (action != null) {
                         System.out.println("action " + action);
                         if (action.flag == 1) {
+                            resetAutoClickRetry();
                             callBack.linkerMove(action.x1, action.y1, action.x2, action.y2);
 
                         } else if (action.flag == 2) {
+                            if (!beginAutoClickAttempt(action, boardLayout(board2))) {
+                                if (!autoClickSuppressedLogged) {
+                                    log("auto_click_suppressed", "attempts=" + autoClickAttemptCount + " action=" + action);
+                                    autoClickSuppressedLogged = true;
+                                }
+                                continue;
+                            }
                             if (isReverse) {
                                 action.y1 = 9 - action.y1;
                                 action.y2 = 9 - action.y2;
@@ -193,6 +212,7 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
                             autoClick(action.x1, action.y1, action.x2, action.y2);
 
                         } else if (action.flag == 3) {
+                            resetAutoClickRetry();
                             break;
                         }
                         if (action.flag == 4) {
@@ -208,6 +228,38 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
                 }
             }
         }
+    }
+
+    private boolean beginAutoClickAttempt(Action action, String currentBoardLayout) {
+        if (!isSameAutoClickAction(lastAutoClickAction, action)
+                || !currentBoardLayout.equals(lastAutoClickBoardLayout)) {
+            lastAutoClickAction = new Action(action.flag, action.x1, action.y1, action.x2, action.y2);
+            lastAutoClickBoardLayout = currentBoardLayout;
+            autoClickAttemptCount = 0;
+            autoClickSuppressedLogged = false;
+        }
+        if (autoClickAttemptCount >= MAX_AUTO_CLICK_ATTEMPTS) {
+            return false;
+        }
+        autoClickAttemptCount++;
+        log("auto_click_attempt", "attempt=" + autoClickAttemptCount + "/" + MAX_AUTO_CLICK_ATTEMPTS + " action=" + action);
+        return true;
+    }
+
+    private boolean isSameAutoClickAction(Action action1, Action action2) {
+        return action1 != null && action2 != null
+                && action1.flag == action2.flag
+                && action1.x1 == action2.x1
+                && action1.y1 == action2.y1
+                && action1.x2 == action2.x2
+                && action1.y2 == action2.y2;
+    }
+
+    private void resetAutoClickRetry() {
+        lastAutoClickAction = null;
+        lastAutoClickBoardLayout = null;
+        autoClickAttemptCount = 0;
+        autoClickSuppressedLogged = false;
     }
 
     class Action {

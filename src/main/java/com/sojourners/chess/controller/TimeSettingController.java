@@ -33,6 +33,9 @@ public class TimeSettingController {
     private TextField nodeText;
 
     @FXML
+    private TextField engineMultiPVText;
+
+    @FXML
     private TextField engineDelayStart;
 
     @FXML
@@ -80,7 +83,20 @@ public class TimeSettingController {
             prop.setAnalysisValue(Long.parseLong(txt));
         }
 
-        String txt = engineDelayStart.getText();
+        String txt = engineMultiPVText.getText();
+        int engineMultiPV;
+        try {
+            if (!StringUtils.isPositiveInt(txt)) {
+                throw new NumberFormatException();
+            }
+            engineMultiPV = Integer.parseInt(txt);
+        } catch (NumberFormatException ex) {
+            DialogUtils.showErrorDialog("失败", "搜索广度错误");
+            return;
+        }
+        prop.setEngineMultiPV(engineMultiPV);
+
+        txt = engineDelayStart.getText();
         if (!StringUtils.isNonNegativeInt(txt)) {
             DialogUtils.showErrorDialog("失败", "输入引擎出招延迟错误");
             return;
@@ -131,6 +147,8 @@ public class TimeSettingController {
 
         engineDelayStart.setText(String.valueOf(prop.getEngineDelayStart()));
         engineDelayEnd.setText(String.valueOf(prop.getEngineDelayEnd()));
+
+        engineMultiPVText.setText(String.valueOf(prop.getEngineMultiPV()));
 
         bookDelayStart.setText(String.valueOf(prop.getBookDelayStart()));
         bookDelayEnd.setText(String.valueOf(prop.getBookDelayEnd()));

@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
  */
 public final class LinkDiagnostics {
 
+    private static final boolean VERBOSE = Boolean.getBoolean("xiangqi.link.verbose");
     private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
     private static final Path LOG_PATH = resolveLogPath();
@@ -35,6 +36,15 @@ public final class LinkDiagnostics {
     public static synchronized void info(String message) {
         System.out.println(message);
         writeToFile(message, null);
+    }
+
+    /**
+     * 高频逐帧诊断默认关闭，需要时通过 -Dxiangqi.link.verbose=true 开启。
+     */
+    public static void trace(String message) {
+        if (VERBOSE) {
+            info(message);
+        }
     }
 
     public static synchronized void error(String message, Throwable error) {

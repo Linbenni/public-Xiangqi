@@ -26,5 +26,20 @@ if ($runningApp) {
 }
 
 Write-Host 'Starting Xiangqi...'
-& mvn -B -o -DskipTests compile javafx:run
-exit $LASTEXITCODE
+$exitCode = 0
+try {
+    & mvn -B -o -DskipTests compile javafx:run
+    $exitCode = $LASTEXITCODE
+} finally {
+    # Windows 上 javafx:run 可能留下独立的 JavaFX 子进程。无论正常退出还是 Ctrl+C，
+    # 都按主类命令行清理残留进程，避免 Maven 已结束但界面仍存活。
+    $remainingApp = Get-CimInstance Win32_Process -Filter "Name = 'java.exe'" |
+        Where-Object { $_.CommandLine -match 'com\.sojourners\.chess\.Main' }
+    if ($remainingApp) {
+        Write-Host 'Stopping Xiangqi application...'
+        $remainingApp | ForEach-Object {
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+exit $exitCode

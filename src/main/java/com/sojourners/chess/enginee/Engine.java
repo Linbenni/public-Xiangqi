@@ -13,11 +13,14 @@ import java.io.*;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 引擎封装
  */
 public class Engine {
+
+    private static final boolean ENGINE_VERBOSE = Boolean.getBoolean("xiangqi.engine.verbose");
 
     private Process process;
 
@@ -32,11 +35,24 @@ public class Engine {
     private volatile boolean hashSizeChange;
     private int hashSize;
 
+    private static final long STOP_WAIT_MILLIS = 1500L;
+
     /**
-     * 停止标志位
+     * 每次新的分析请求都会递增。异步开局库查询或旧搜索输出只有代际仍然匹配时才允许生效。
      */
-    private volatile boolean stopFlag;
-    private volatile long time;
+    private final AtomicLong analysisGeneration = new AtomicLong();
+
+    /**
+     * 串行化 stop -> position -> go 切换，避免多个异步请求交叉写入引擎 stdin。
+     */
+    private final Object analysisCommandLock = new Object();
+
+    /**
+     * 当前真正已经发送 go 的搜索状态。bestmove 会在 reader 线程中将其标记为结束。
+     */
+    private final Object searchStateLock = new Object();
+    private volatile boolean searchActive;
+    private volatile long runningGeneration;
 
     private BufferedReader reader;
 
@@ -64,8 +80,6 @@ public class Engine {
         this.cb = cb;
         this.random = new SecureRandom();
 
-        this.time = Integer.MAX_VALUE;
-
         multiPVOptionName = ec.getOptions().keySet().stream()
                 .filter(name -> "MultiPV".equalsIgnoreCase(name))
                 .findFirst()
@@ -80,7 +94,9 @@ public class Engine {
             try {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    System.out.println(line);
+                    if (ENGINE_VERBOSE || !line.startsWith("info ")) {
+                        System.out.println(line);
+                    }
                     if (line.contains("depth") || line.contains("nps")) {
                         thinkDetail(line);
                     } else if (line.contains("bestmove")) {
@@ -208,8 +224,14 @@ public class Engine {
         return true;
     }
     private void bestMove(String msg) {
-        if (stopFlag) {
-            stopFlag = false;
+        long completedGeneration;
+        synchronized (searchStateLock) {
+            completedGeneration = runningGeneration;
+            searchActive = false;
+            searchStateLock.notifyAll();
+        }
+
+        if (completedGeneration != analysisGeneration.get()) {
             return;
         }
 
@@ -221,9 +243,16 @@ public class Engine {
             int t = random.nextInt(Properties.getInstance().getEngineDelayStart(), Properties.getInstance().getEngineDelayEnd());
             sleep(t);
         }
-        cb.bestMove(str[1], str.length == 4 ? str[3] : null);
+        if (completedGeneration == analysisGeneration.get()) {
+            cb.bestMove(str[1], str.length == 4 ? str[3] : null);
+        }
     }
     private void thinkDetail(String msg) {
+        long detailGeneration = runningGeneration;
+        if (detailGeneration != analysisGeneration.get()) {
+            return;
+        }
+
         String[] str = msg.split(" ");
         ThinkData td = new ThinkData();
         List<String> detail = new ArrayList<>();
@@ -286,89 +315,173 @@ public class Engine {
             }
         }
 
-        if (td.getDepth() != null && td.getDepth() < 5) {
-            stopFlag = false;
-        }
-        if (td.getTime() != null) {
-            if (td.getTime() < this.time || td.getTime() > 0 && td.getTime() < 70) {
-                stopFlag = false;
-            }
-            this.time = td.getTime();
-        }
-
-        if (td.getDetail().size() > 0) {
+        if (td.getDetail().size() > 0 && detailGeneration == analysisGeneration.get()) {
             cb.thinkDetail(td);
         }
     }
 
-    public void analysis(String fenCode, List<String> moves, char[][] board, boolean redGo) {
+    public void analysis(String fenCode, List<String> moves, char[][] board, boolean redGo, boolean allowBookMove) {
+        long generation = beginAnalysisRequest();
+        List<String> movesSnapshot = moves == null ? Collections.emptyList() : List.copyOf(moves);
+        char[][] boardSnapshot = copyBoard(board);
+
         Thread.startVirtualThread(() -> {
             if (Properties.getInstance().getBookSwitch()) {
                 long s = System.currentTimeMillis();
-                List<BookData> results = OpenBookManager.getInstance().queryBook(board, redGo, moves.size() / 2 >= Properties.getInstance().getOffManualSteps());
+                List<BookData> results = OpenBookManager.getInstance().queryBook(
+                        boardSnapshot,
+                        redGo,
+                        movesSnapshot.size() / 2 >= Properties.getInstance().getOffManualSteps());
                 System.out.println("查询库时间" + (System.currentTimeMillis() - s));
-                this.cb.showBookResults(results);
-                if (results.size() > 0 && this.analysisModel != AnalysisModel.INFINITE) {
-                    if (Properties.getInstance().getBookDelayEnd() > 0 && Properties.getInstance().getBookDelayEnd() >= Properties.getInstance().getBookDelayStart()) {
-                        int t = random.nextInt(Properties.getInstance().getBookDelayStart(), Properties.getInstance().getBookDelayEnd());
-                        sleep(t);
-                    }
-                    this.cb.bestMove(results.get(0).getMove(), null);
+
+                if (!isCurrentAnalysis(generation)) {
                     return;
                 }
 
+                this.cb.showBookResults(results);
+                if (allowBookMove && !results.isEmpty()) {
+                    if (Properties.getInstance().getBookDelayEnd() > 0
+                            && Properties.getInstance().getBookDelayEnd() >= Properties.getInstance().getBookDelayStart()) {
+                        int t = random.nextInt(Properties.getInstance().getBookDelayStart(), Properties.getInstance().getBookDelayEnd());
+                        sleep(t);
+                    }
+                    if (isCurrentAnalysis(generation)) {
+                        this.cb.bestMove(results.get(0).getMove(), null);
+                    }
+                    return;
+                }
             }
-            this.analysis(fenCode, moves, null);
+
+            startEngineAnalysis(generation, fenCode, movesSnapshot, null);
         });
     }
 
     public void analysis(String fenCode, List<String> moves, List<String> tacticList) {
-        stop();
+        long generation = beginAnalysisRequest();
+        List<String> movesSnapshot = moves == null ? Collections.emptyList() : List.copyOf(moves);
+        List<String> tacticSnapshot = tacticList == null ? Collections.emptyList() : List.copyOf(tacticList);
+        Thread.startVirtualThread(() -> startEngineAnalysis(generation, fenCode, movesSnapshot, tacticSnapshot));
+    }
 
-        if (threadNumChange) {
-            cmd(("uci".equals(this.protocol) ? "setoption name Threads value " : "setoption Threads ") + threadNum);
-            this.threadNumChange = false;
-        }
-        if (hashSizeChange) {
-            cmd(("uci".equals(this.protocol) ? "setoption name Hash value " : "setoption Hash ") + hashSize);
-            this.hashSizeChange = false;
-        }
-        if (multiPVChange) {
-            if (supportsMultiPV()) {
-                cmd(("uci".equals(this.protocol)
-                        ? "setoption name " + multiPVOptionName + " value "
-                        : "setoption " + multiPVOptionName + " ") + multiPV);
-            }
-            this.multiPVChange = false;
-        }
+    private long beginAnalysisRequest() {
+        long generation = analysisGeneration.incrementAndGet();
+        requestStop();
+        return generation;
+    }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("position fen ").append(fenCode);
-        if (moves != null && moves.size() > 0) {
-            sb.append(" moves");
-            for (String move : moves) {
-                sb.append(" ").append(move);
-            }
-        }
-        cmd(sb.toString());
+    private boolean isCurrentAnalysis(long generation) {
+        return generation == analysisGeneration.get();
+    }
 
-        boolean hasTactics = tacticList != null && !tacticList.isEmpty();
-        if (hasTactics) {
-            sb = new StringBuilder();
-            sb.append(" searchmoves");
-            for (String tactic : tacticList) {
-                sb.append(" ").append(tactic);
+    private void startEngineAnalysis(long generation, String fenCode, List<String> moves, List<String> tacticList) {
+        synchronized (analysisCommandLock) {
+            if (!isCurrentAnalysis(generation) || !waitForPreviousSearch(generation)) {
+                return;
+            }
+
+            if (threadNumChange) {
+                cmd(("uci".equals(this.protocol) ? "setoption name Threads value " : "setoption Threads ") + threadNum);
+                this.threadNumChange = false;
+            }
+            if (hashSizeChange) {
+                cmd(("uci".equals(this.protocol) ? "setoption name Hash value " : "setoption Hash ") + hashSize);
+                this.hashSizeChange = false;
+            }
+            if (multiPVChange) {
+                if (supportsMultiPV()) {
+                    cmd(("uci".equals(this.protocol)
+                            ? "setoption name " + multiPVOptionName + " value "
+                            : "setoption " + multiPVOptionName + " ") + multiPV);
+                }
+                this.multiPVChange = false;
+            }
+
+            if (!isCurrentAnalysis(generation)) {
+                return;
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("position fen ").append(fenCode);
+            if (!moves.isEmpty()) {
+                sb.append(" moves");
+                for (String move : moves) {
+                    sb.append(" ").append(move);
+                }
+            }
+            cmd(sb.toString());
+
+            boolean hasTactics = tacticList != null && !tacticList.isEmpty();
+            String searchMoves = "";
+            if (hasTactics) {
+                sb = new StringBuilder(" searchmoves");
+                for (String tactic : tacticList) {
+                    sb.append(" ").append(tactic);
+                }
+                searchMoves = sb.toString();
+            }
+
+            String goCommand;
+            if (analysisModel == AnalysisModel.FIXED_STEPS) {
+                goCommand = "go depth " + analysisValue + searchMoves;
+            } else if (analysisModel == AnalysisModel.FIXED_TIME) {
+                goCommand = "go movetime " + analysisValue + searchMoves;
+            } else if (analysisModel == AnalysisModel.FIXED_NODES) {
+                goCommand = "go nodes " + analysisValue + searchMoves;
+            } else {
+                goCommand = "go infinite" + searchMoves;
+            }
+
+            synchronized (searchStateLock) {
+                if (!isCurrentAnalysis(generation)) {
+                    return;
+                }
+                runningGeneration = generation;
+                searchActive = true;
+                cmd(goCommand);
             }
         }
-        if (analysisModel == AnalysisModel.FIXED_STEPS) {
-            cmd("go depth " + analysisValue + (hasTactics ? sb.toString() : ""));
-        } else if (analysisModel == AnalysisModel.FIXED_TIME) {
-            cmd("go movetime " + analysisValue + (hasTactics ? sb.toString() : ""));
-        } else if (analysisModel == AnalysisModel.FIXED_NODES) {
-            cmd("go nodes " + analysisValue + (hasTactics ? sb.toString() : ""));
-        } else {
-            cmd("go infinite" + (hasTactics ? sb.toString() : ""));
+    }
+
+    private boolean waitForPreviousSearch(long generation) {
+        long deadline = System.nanoTime() + STOP_WAIT_MILLIS * 1_000_000L;
+        synchronized (searchStateLock) {
+            while (searchActive && isCurrentAnalysis(generation)) {
+                long remainingNanos = deadline - System.nanoTime();
+                if (remainingNanos <= 0) {
+                    System.err.println("引擎 stop 超时，放弃本次新搜索以避免与旧搜索重叠");
+                    return false;
+                }
+                try {
+                    long millis = Math.max(1L, remainingNanos / 1_000_000L);
+                    searchStateLock.wait(millis);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
         }
+        return isCurrentAnalysis(generation);
+    }
+
+    private void requestStop() {
+        boolean shouldStop;
+        synchronized (searchStateLock) {
+            shouldStop = searchActive;
+        }
+        if (shouldStop) {
+            cmd("stop");
+        }
+    }
+
+    private char[][] copyBoard(char[][] source) {
+        if (source == null) {
+            return null;
+        }
+        char[][] copy = new char[source.length][];
+        for (int i = 0; i < source.length; i++) {
+            copy[i] = Arrays.copyOf(source[i], source[i].length);
+        }
+        return copy;
     }
 
     public void moveNow() {
@@ -376,8 +489,8 @@ public class Engine {
     }
 
     public void stop() {
-        stopFlag = true;
-        cmd("stop");
+        analysisGeneration.incrementAndGet();
+        requestStop();
     }
 
     private void cmd(String command) {

@@ -15,6 +15,7 @@ import com.sojourners.chess.model.ManualRecord;
 import com.sojourners.chess.model.ThinkData;
 import com.sojourners.chess.openbook.OpenBookManager;
 import com.sojourners.chess.util.*;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -51,6 +52,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.util.Callback;
+import javafx.util.Duration;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -66,8 +68,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCallBack {
+
+    private static final double ANALYSIS_UI_REFRESH_MILLIS = 100d;
 
     @FXML
     private Canvas canvas;
@@ -93,6 +99,9 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     private final Map<Integer, ThinkData> latestAnalysisByPv = new TreeMap<>();
     private final List<ThinkData> analysisHistory = new ArrayList<>();
     private final Set<ThinkData> expandedVariations = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<Integer, ThinkData> pendingAnalysisByPv = new ConcurrentHashMap<>();
+    private final AtomicBoolean analysisFlushScheduled = new AtomicBoolean();
+    private PauseTransition analysisFlushDelay;
 
     @FXML
     private CheckBox engineHistoryCheckBox;
@@ -465,17 +474,21 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         // 重置变招列表
         tacticList = null;
 
+        // 先让上一代搜索失效，再清空 UI，避免旧 info 在 clear 之后重新排入 JavaFX 队列。
+        engine.stop();
         clearAnalysisView();
         resumeAnalysisAutoFollow();
         configureEngineForSearch();
-        engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(), this.board.getBoard(), redGo);
+        engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(),
+                this.board.getBoard(), redGo, !robotAnalysis.getValue());
     }
 
     private void configureEngineForSearch() {
         engine.setThreadNum(prop.getThreadNum());
         engine.setHashSize(prop.getHashSize());
         engine.setMultiPV(prop.getEngineMultiPV());
-        engine.setAnalysisModel(robotAnalysis.getValue() ? Engine.AnalysisModel.INFINITE : prop.getAnalysisModel(), prop.getAnalysisValue());
+        // 分析/观战模式也必须遵守用户选择的固定时间、固定深度或固定节点策略。
+        engine.setAnalysisModel(prop.getAnalysisModel(), prop.getAnalysisValue());
         board.showMultiPV(engine.getMultiPV() > 1);
     }
 
@@ -910,6 +923,11 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     }
 
     private void clearAnalysisView() {
+        pendingAnalysisByPv.clear();
+        analysisFlushScheduled.set(false);
+        if (analysisFlushDelay != null) {
+            analysisFlushDelay.stop();
+        }
         latestAnalysisByPv.clear();
         analysisHistory.clear();
         expandedVariations.clear();
@@ -1422,39 +1440,84 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     @Override
     public void thinkDetail(ThinkData td) {
         if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue() || robotAnalysis.getValue()) {
-            td.generate(redGo, isReverse.getValue(), board);
-            if (td.getValid()) {
-                Platform.runLater(() -> {
-                    boolean shouldFollowLatest = followLatestAnalysis;
-                    int pv = td.getPv() == null ? 1 : td.getPv();
-                    latestAnalysisByPv.put(pv, td);
-                    analysisHistory.add(0, td);
-                    if (analysisHistory.size() > 128) {
-                        analysisHistory.remove(analysisHistory.size() - 1);
-                    }
-                    refreshAnalysisList();
-                    if (analysisScrollBar == null) {
-                        bindAnalysisScrollBar();
-                    }
-                    if (shouldFollowLatest) {
-                        followLatestAnalysis = true;
-                        listView.scrollTo(0);
-                    }
+            int pv = td.getPv() == null ? 1 : td.getPv();
+            // reader 线程只保存最新原始数据。主变翻译和 UI 构建都延后到合并刷新，避免重复计算。
+            pendingAnalysisByPv.put(pv, td);
+            scheduleAnalysisFlush();
+        }
+    }
 
-                    if (prop.isLinkShowInfo()) {
-                        infoShowLabel.setText(td.getTitle() + " | " + td.getBody());
-                        setScoreStyle(infoShowLabel, td.getScore());
-                        timeShowLabel.setText(getTimeStrategyString());
-                    }
-
-                    board.setTip(td.getDetail().get(0), td.getDetail().size() > 1 ? td.getDetail().get(1) : null, td.getPv());
-
-                    if (td.getPv() == 1) {
-                        updateAnalysisStatus(td);
-                        chessManualHandle.setScore(td.getScore(), td.getMate());
-                    }
-                });
+    private void scheduleAnalysisFlush() {
+        if (!analysisFlushScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        Platform.runLater(() -> {
+            if (analysisFlushDelay == null) {
+                analysisFlushDelay = new PauseTransition(Duration.millis(ANALYSIS_UI_REFRESH_MILLIS));
+                analysisFlushDelay.setOnFinished(event -> flushPendingAnalysis());
             }
+            analysisFlushDelay.playFromStart();
+        });
+    }
+
+    private void flushPendingAnalysis() {
+        Map<Integer, ThinkData> updates = new TreeMap<>(pendingAnalysisByPv);
+        updates.forEach((pv, data) -> pendingAnalysisByPv.remove(pv, data));
+        analysisFlushScheduled.set(false);
+
+        if (updates.isEmpty()) {
+            return;
+        }
+
+        boolean shouldFollowLatest = followLatestAnalysis;
+        ThinkData statusData = null;
+        ThinkData infoData = null;
+        for (Map.Entry<Integer, ThinkData> entry : updates.entrySet()) {
+            int pv = entry.getKey();
+            ThinkData data = entry.getValue();
+            data.generate(redGo, isReverse.getValue(), board);
+            if (!data.getValid()) {
+                continue;
+            }
+
+            latestAnalysisByPv.put(pv, data);
+            analysisHistory.add(0, data);
+            infoData = data;
+
+            if (data.getDetail() != null && !data.getDetail().isEmpty()) {
+                board.setTip(data.getDetail().get(0), data.getDetail().size() > 1 ? data.getDetail().get(1) : null, pv);
+            }
+            if (pv == 1) {
+                statusData = data;
+            }
+        }
+        while (analysisHistory.size() > 128) {
+            analysisHistory.remove(analysisHistory.size() - 1);
+        }
+
+        refreshAnalysisList();
+        if (analysisScrollBar == null) {
+            bindAnalysisScrollBar();
+        }
+        if (shouldFollowLatest) {
+            followLatestAnalysis = true;
+            listView.scrollTo(0);
+        }
+
+        if (prop.isLinkShowInfo() && infoData != null) {
+            infoShowLabel.setText(infoData.getTitle() + " | " + infoData.getBody());
+            setScoreStyle(infoShowLabel, infoData.getScore());
+            timeShowLabel.setText(getTimeStrategyString());
+        }
+
+        if (statusData != null) {
+            updateAnalysisStatus(statusData);
+            chessManualHandle.setScore(statusData.getScore(), statusData.getMate());
+        }
+
+        // flush 期间若 reader 又写入了新结果，再安排下一帧；始终只有一个定时刷新在途。
+        if (!pendingAnalysisByPv.isEmpty()) {
+            scheduleAnalysisFlush();
         }
     }
 
@@ -1484,6 +1547,12 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
     @Override
     public void showBookResults(List<BookData> list) {
+        if (!Platform.isFxApplicationThread()) {
+            List<BookData> snapshot = List.copyOf(list);
+            Platform.runLater(() -> showBookResults(snapshot));
+            return;
+        }
+
         this.bookTable.getItems().clear();
         for (BookData bd : list) {
             String move = bd.getMove();

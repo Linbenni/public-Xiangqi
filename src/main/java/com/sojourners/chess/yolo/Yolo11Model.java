@@ -38,10 +38,9 @@ public class Yolo11Model extends Yolo5Model {
                 if (i >= topMargin && j >= leftMargin && i < topMargin + resizedHeight
                         && j < leftMargin + resizedWidth) {
                     int rgb = resizedImage.getRGB(j - leftMargin, i - topMargin);
-                    Color color = new Color(rgb, true);
-                    arr[0][i][j] = color.getRed() / 255.0f;
-                    arr[1][i][j] = color.getGreen() / 255.0f;
-                    arr[2][i][j] = color.getBlue() / 255.0f;
+                    arr[0][i][j] = ((rgb >> 16) & 0xFF) / 255.0f;
+                    arr[1][i][j] = ((rgb >> 8) & 0xFF) / 255.0f;
+                    arr[2][i][j] = (rgb & 0xFF) / 255.0f;
                 } else {
                     arr[0][i][j] = 114.0f / 255;
                     arr[1][i][j] = 114.0f / 255;

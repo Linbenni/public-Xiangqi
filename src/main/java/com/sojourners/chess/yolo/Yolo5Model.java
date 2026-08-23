@@ -33,7 +33,7 @@ public class Yolo5Model extends OnnxModel {
             }
             // 图像宽高的缩放比例
             List<DetectResult> results = this.predict(img);
-            modelLog("board_box_detections", "image=" + imageSize(img) + " detections=" + summarizeDetections(results));
+            modelTrace("board_box_detections", "image=" + imageSize(img) + " detections=" + summarizeDetections(results));
             if (results == null) {
                 modelLog("board_box_failed", "reason=null_model_output");
                 return null;
@@ -62,7 +62,7 @@ public class Yolo5Model extends OnnxModel {
             if (pos.y + pos.height > img.getHeight()) {
                 pos.height = img.getHeight() - pos.y;
             }
-            modelLog("board_box_succeeded", "image=" + imageSize(img) + " paddedBoard=" + rectangle(pos));
+            modelTrace("board_box_succeeded", "image=" + imageSize(img) + " paddedBoard=" + rectangle(pos));
             return pos;
 
         } catch (Exception e) {
@@ -118,7 +118,7 @@ public class Yolo5Model extends OnnxModel {
             }
             // 图像宽高的缩放比例
             List<DetectResult> results = this.predict(img);
-            modelLog("piece_mapping_detections", "image=" + imageSize(img) + " detections=" + summarizeDetections(results));
+            modelTrace("piece_mapping_detections", "image=" + imageSize(img) + " detections=" + summarizeDetections(results));
             if (results == null) {
                 modelLog("piece_mapping_failed", "reason=null_model_output");
                 return false;
@@ -156,7 +156,7 @@ public class Yolo5Model extends OnnxModel {
                     mappedPieces++;
                 }
             }
-            modelLog("piece_mapping_succeeded", "board=" + rectangle(boardPos) + " cell=" + pieceWidth + "x" + pieceHeight
+            modelTrace("piece_mapping_succeeded", "board=" + rectangle(boardPos) + " cell=" + pieceWidth + "x" + pieceHeight
                     + " mapped=" + mappedPieces + " outside=" + outsideBoard + " overwritten=" + overwrittenSquares);
             return true;
 
@@ -191,7 +191,7 @@ public class Yolo5Model extends OnnxModel {
         }
 
 //        System.gc();
-        modelLog("inference_completed", "image=" + imageSize(image)
+        modelTrace("inference_completed", "image=" + imageSize(image)
                 + " durationMs=" + (System.currentTimeMillis() - s)
                 + " detections=" + (list == null ? "null" : list.size()));
         return list;
@@ -199,6 +199,10 @@ public class Yolo5Model extends OnnxModel {
 
     private static void modelLog(String event, String fields) {
         LinkDiagnostics.info("[LINK_MODEL] thread=" + Thread.currentThread().getName() + " event=" + event + " " + fields);
+    }
+
+    private static void modelTrace(String event, String fields) {
+        LinkDiagnostics.trace("[LINK_MODEL] thread=" + Thread.currentThread().getName() + " event=" + event + " " + fields);
     }
 
     private static void modelError(String event, Exception error) {
@@ -249,10 +253,9 @@ public class Yolo5Model extends OnnxModel {
                 if (i >= topMargin && j >= leftMargin && i < topMargin + resizedHeight
                         && j < leftMargin + resizedWidth) {
                     int rgb = resizedImage.getRGB(j - leftMargin, i - topMargin);
-                    Color color = new Color(rgb, true);
-                    arr[0][i][j] = color.getRed() / 255.0f;
-                    arr[1][i][j] = color.getGreen() / 255.0f;
-                    arr[2][i][j] = color.getBlue() / 255.0f;
+                    arr[0][i][j] = ((rgb >> 16) & 0xFF) / 255.0f;
+                    arr[1][i][j] = ((rgb >> 8) & 0xFF) / 255.0f;
+                    arr[2][i][j] = (rgb & 0xFF) / 255.0f;
                 } else {
                     arr[0][i][j] = 114.0f / 255;
                     arr[1][i][j] = 114.0f / 255;

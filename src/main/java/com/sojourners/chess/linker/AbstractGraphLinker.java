@@ -19,6 +19,9 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
 
     private static final AtomicLong SESSION_SEQUENCE = new AtomicLong();
     private static final int MAX_AUTO_CLICK_ATTEMPTS = 3;
+    private static final int FRAME_SIGNATURE_GRID = 64;
+    private static final int FRAME_CHANGE_SAMPLE_THRESHOLD = 8;
+    private static final int FRAME_CHANNEL_DELTA_THRESHOLD = 12;
 
     /**
      * 扫描线程
@@ -61,6 +64,17 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
 
     private boolean autoClickSuppressedLogged;
 
+    /**
+     * 棋盘静止时复用上一次识别结果，避免按 scanMs 对完全相同的画面重复跑 ONNX。
+     */
+    private int[] lastBoardFrameSignature;
+    private int lastBoardFrameWidth;
+    private int lastBoardFrameHeight;
+    private boolean lastRecognitionValid;
+    private final char[][] lastRecognizedBoard = new char[10][9];
+    private long boardInferenceCount;
+    private long boardCacheHitCount;
+
     public AbstractGraphLinker(LinkerCallBack callBack) throws AWTException {
         this.callBack = callBack;
         robot = new Robot();
@@ -78,6 +92,9 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
         this.sessionId = Long.toString(SESSION_SEQUENCE.incrementAndGet());
         this.boardSearchAttempt = 0;
         this.boardReadAttempt = 0;
+        this.boardInferenceCount = 0;
+        this.boardCacheHitCount = 0;
+        resetRecognitionCache();
         resetAutoClickRetry();
         log("selection_started", "backMode=" + prop.isLinkBackMode()
                 + " scanMs=" + prop.getLinkScanTime()
@@ -94,6 +111,11 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
 
     protected final void log(String event, String fields) {
         LinkDiagnostics.info("[LINK] session=" + sessionId + " event=" + event
+                + (fields == null || fields.isBlank() ? "" : " " + fields));
+    }
+
+    protected final void trace(String event, String fields) {
+        LinkDiagnostics.trace("[LINK] session=" + sessionId + " event=" + event
                 + (fields == null || fields.isBlank() ? "" : " " + fields));
     }
 
@@ -497,7 +519,7 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
         try {
             Thread.sleep(time);
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            // stop() 通过 interrupt 唤醒扫描线程，这是正常退出路径，不应打印异常栈。
             Thread.currentThread().interrupt();
         }
     }
@@ -559,12 +581,13 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
             log("board_search_failed", "attempt=" + attempt + " stage=screenshot reason=null_image");
             return false;
         }
-        log("board_search_screenshot", "attempt=" + attempt + " image=" + imageSize(img));
+        trace("board_search_screenshot", "attempt=" + attempt + " image=" + imageSize(img));
         this.boardPos = this.aiModel.findBoardPosition(img);
         if (this.boardPos == null) {
             log("board_search_failed", "attempt=" + attempt + " stage=model reason=board_not_detected");
             return false;
         }
+        resetRecognitionCache();
         log("board_search_succeeded", "attempt=" + attempt + " board=" + rectangle(this.boardPos));
         return true;
     }
@@ -577,10 +600,10 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
     BufferedImage screenshot(boolean fullScreen) {
         if (prop.isLinkBackMode()) {
             Rectangle requested = fullScreen ? null : boardPos;
-            log("screenshot_requested", "mode=background scope=" + (fullScreen ? "window" : "board")
+            trace("screenshot_requested", "mode=background scope=" + (fullScreen ? "window" : "board")
                     + " rect=" + rectangle(requested));
             BufferedImage img = screenshotByBack(requested);
-            log("screenshot_completed", "mode=background scope=" + (fullScreen ? "window" : "board")
+            trace("screenshot_completed", "mode=background scope=" + (fullScreen ? "window" : "board")
                     + " result=" + imageSummary(img));
             if (img == null) {
                 Rectangle pos = getTargetWindowPosition();
@@ -591,7 +614,7 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
                 log("screenshot_fallback", "from=background to=foreground scope="
                         + (fullScreen ? "window" : "board") + " rect=" + rectangle(pos));
                 img = screenshotByFront(pos);
-                log("screenshot_completed", "mode=foreground_fallback scope="
+                trace("screenshot_completed", "mode=foreground_fallback scope="
                         + (fullScreen ? "window" : "board") + " result=" + imageSummary(img));
             }
             return img;
@@ -602,10 +625,10 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
                 pos.setLocation(pos.x + boardPos.x, pos.y + boardPos.y);
                 pos.setSize(boardPos.width, boardPos.height);
             }
-            log("screenshot_requested", "mode=foreground scope=" + (fullScreen ? "window" : "board")
+            trace("screenshot_requested", "mode=foreground scope=" + (fullScreen ? "window" : "board")
                     + " rect=" + rectangle(pos));
             BufferedImage img = screenshotByFront(pos);
-            log("screenshot_completed", "mode=foreground scope=" + (fullScreen ? "window" : "board")
+            trace("screenshot_completed", "mode=foreground scope=" + (fullScreen ? "window" : "board")
                     + " result=" + imageSummary(img));
             return img;
         }
@@ -614,26 +637,100 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
 
     private boolean findChessBoard(char[][] board) {
         long attempt = ++boardReadAttempt;
-        // 截图
         BufferedImage img = screenshot(false);
         if (img == null) {
             log("piece_recognition_failed", "attempt=" + attempt + " stage=screenshot reason=null_image board=" + rectangle(boardPos));
             return false;
         }
-        // ai识别棋盘棋子
+
+        int[] frameSignature = buildFrameSignature(img);
+        if (isSameBoardFrame(frameSignature, img.getWidth(), img.getHeight())) {
+            boardCacheHitCount++;
+            if (lastRecognitionValid) {
+                copyBoard(lastRecognizedBoard, board);
+            }
+            trace("piece_recognition_cache_hit", "attempt=" + attempt + " valid=" + lastRecognitionValid);
+            return lastRecognitionValid;
+        }
+
+        lastBoardFrameSignature = frameSignature;
+        lastBoardFrameWidth = img.getWidth();
+        lastBoardFrameHeight = img.getHeight();
+        boardInferenceCount++;
+
         if (!this.aiModel.findChessBoard(img, board)) {
+            lastRecognitionValid = false;
             log("piece_recognition_failed", "attempt=" + attempt + " stage=model reason=board_or_pieces_not_detected image=" + imageSize(img));
             return false;
         }
         String validationError = XiangqiUtils.getChessBoardValidationError(board);
         if (validationError != null) {
+            lastRecognitionValid = false;
             log("piece_recognition_failed", "attempt=" + attempt + " stage=validation reason=" + validationError
                     + " pieces=" + countPieces(board) + " layout=" + boardLayout(board));
             return false;
         }
-        log("piece_recognition_succeeded", "attempt=" + attempt + " pieces=" + countPieces(board)
+
+        copyBoard(board, lastRecognizedBoard);
+        lastRecognitionValid = true;
+        trace("piece_recognition_succeeded", "attempt=" + attempt + " pieces=" + countPieces(board)
                 + " image=" + imageSize(img) + " layout=" + boardLayout(board));
         return true;
+    }
+
+    private void resetRecognitionCache() {
+        lastBoardFrameSignature = null;
+        lastBoardFrameWidth = 0;
+        lastBoardFrameHeight = 0;
+        lastRecognitionValid = false;
+    }
+
+    private int[] buildFrameSignature(BufferedImage image) {
+        int[] signature = new int[FRAME_SIGNATURE_GRID * FRAME_SIGNATURE_GRID];
+        int width = image.getWidth();
+        int height = image.getHeight();
+        int index = 0;
+        for (int y = 0; y < FRAME_SIGNATURE_GRID; y++) {
+            int sampleY = FRAME_SIGNATURE_GRID == 1 ? 0 : y * (height - 1) / (FRAME_SIGNATURE_GRID - 1);
+            for (int x = 0; x < FRAME_SIGNATURE_GRID; x++) {
+                int sampleX = FRAME_SIGNATURE_GRID == 1 ? 0 : x * (width - 1) / (FRAME_SIGNATURE_GRID - 1);
+                signature[index++] = image.getRGB(sampleX, sampleY) & 0x00FFFFFF;
+            }
+        }
+        return signature;
+    }
+
+    private boolean isSameBoardFrame(int[] signature, int width, int height) {
+        if (lastBoardFrameSignature == null
+                || width != lastBoardFrameWidth
+                || height != lastBoardFrameHeight
+                || signature.length != lastBoardFrameSignature.length) {
+            return false;
+        }
+
+        int changedSamples = 0;
+        for (int i = 0; i < signature.length; i++) {
+            int current = signature[i];
+            int previous = lastBoardFrameSignature[i];
+            int redDelta = Math.abs(((current >> 16) & 0xFF) - ((previous >> 16) & 0xFF));
+            int greenDelta = Math.abs(((current >> 8) & 0xFF) - ((previous >> 8) & 0xFF));
+            int blueDelta = Math.abs((current & 0xFF) - (previous & 0xFF));
+            if (redDelta > FRAME_CHANNEL_DELTA_THRESHOLD
+                    || greenDelta > FRAME_CHANNEL_DELTA_THRESHOLD
+                    || blueDelta > FRAME_CHANNEL_DELTA_THRESHOLD) {
+                changedSamples++;
+                if (changedSamples > FRAME_CHANGE_SAMPLE_THRESHOLD) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private void copyBoard(char[][] source, char[][] target) {
+        for (int i = 0; i < source.length; i++) {
+            System.arraycopy(source[i], 0, target[i], 0, source[i].length);
+        }
     }
     private boolean reverse(char[][] board) throws Exception {
         // 是否翻转
@@ -730,7 +827,10 @@ public abstract class AbstractGraphLinker implements GraphLinker, Runnable {
      */
     @Override
     public void stop() {
-        log("link_stopping", "threadAlive=" + (thread != null && thread.isAlive()));
+        log("link_stopping", "threadAlive=" + (thread != null && thread.isAlive())
+                + " scans=" + boardReadAttempt
+                + " modelRuns=" + boardInferenceCount
+                + " cacheHits=" + boardCacheHitCount);
         if (thread != null && thread.isAlive()) {
             thread.interrupt();
         }

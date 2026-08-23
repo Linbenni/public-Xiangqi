@@ -2,6 +2,7 @@ package com.sojourners.chess.controller;
 
 import com.sojourners.chess.App;
 import com.sojourners.chess.board.ChessBoard;
+import com.sojourners.chess.board.MoveStep;
 import com.sojourners.chess.config.Properties;
 import com.sojourners.chess.controller.handle.ChessManualCallBack;
 import com.sojourners.chess.controller.handle.ChessManualHandle;
@@ -1404,7 +1405,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
      * 连线模式下自动点击走棋
      * @param step
      */
-    private void trickAutoClick(ChessBoard.Step step) {
+    private void trickAutoClick(MoveStep step) {
         if (step != null) {
             int x1 = step.getStart().getX(), y1 = step.getStart().getY();
             int x2 = step.getEnd().getX(), y2 = step.getEnd().getY();
@@ -1422,7 +1423,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     @Override
     public void bestMove(String first, String second) {
         if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue()) {
-            ChessBoard.Step s = board.stepForBoard(first);
+            MoveStep s = board.stepForBoard(first);
 
             Platform.runLater(() -> {
                 board.move(s.getStart().getX(), s.getStart().getY(), s.getEnd().getX(), s.getEnd().getY());
@@ -1475,7 +1476,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         for (Map.Entry<Integer, ThinkData> entry : updates.entrySet()) {
             int pv = entry.getKey();
             ThinkData data = entry.getValue();
-            data.generate(redGo, isReverse.getValue(), board);
+            data.generate(redGo, isReverse.getValue(), board.getBoard());
             if (!data.getValid()) {
                 continue;
             }

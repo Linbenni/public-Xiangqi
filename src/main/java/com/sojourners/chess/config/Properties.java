@@ -11,7 +11,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Properties implements Serializable {
+public class Properties implements Serializable, AppConfig {
 
     private static final long serialVersionUID = -1410031608529065857L;
 

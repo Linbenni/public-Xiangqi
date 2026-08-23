@@ -1,22 +1,24 @@
 package com.sojourners.chess.enginee;
 
 
-import com.sojourners.chess.config.Properties;
+import com.sojourners.chess.config.ConfigProvider;
 import com.sojourners.chess.model.BookData;
 import com.sojourners.chess.model.EngineConfig;
 import com.sojourners.chess.model.ThinkData;
 import com.sojourners.chess.openbook.OpenBookManager;
-import com.sojourners.chess.util.PathUtils;
 import com.sojourners.chess.util.StringUtils;
 
 import java.io.*;
+import java.io.File;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 引擎封装
+ * 引擎封装。
+ * 桌面/安卓共用：进程启动经 {@link ProcessStarter} 注入，
+ * 配置经 {@link ConfigProvider} 获取，线程模型仅使用平台线程。
  */
 public class Engine {
 
@@ -64,6 +66,8 @@ public class Engine {
 
     private Random random;
 
+    private final ProcessStarter starter;
+
     private final String multiPVOptionName;
     private volatile boolean multiPVChange;
     private int multiPV = 1;
@@ -76,8 +80,13 @@ public class Engine {
     }
 
     public Engine(EngineConfig ec, EngineCallBack cb) throws IOException {
+        this(ec, cb, new DefaultProcessStarter());
+    }
+
+    public Engine(EngineConfig ec, EngineCallBack cb, ProcessStarter starter) throws IOException {
         this.protocol = ec.getProtocol();
         this.cb = cb;
+        this.starter = starter;
         this.random = new SecureRandom();
 
         multiPVOptionName = ec.getOptions().keySet().stream()
@@ -86,11 +95,12 @@ public class Engine {
                 .orElse(null);
         multiPVChange = supportsMultiPV();
 
-        process = Runtime.getRuntime().exec(ec.getPath(), null, PathUtils.getParentDir(ec.getPath()));
+        File workDir = new File(ec.getPath()).getParentFile();
+        process = starter.start(ec.getPath(), workDir);
         reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
         writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
 
-        thread = Thread.startVirtualThread(() -> {
+        thread = new Thread(() -> {
             try {
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -106,7 +116,8 @@ public class Engine {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-        });
+        }, "engine-reader");
+        thread.start();
 
         cmd(protocol);
 
@@ -131,6 +142,15 @@ public class Engine {
         return multiPVOptionName != null;
     }
 
+    /**
+     * 用短生命周期守护线程执行异步任务（替代原虚拟线程：安卓不支持 Loom）。
+     */
+    private static void runAsync(Runnable task, String name) {
+        Thread t = new Thread(task, name);
+        t.setDaemon(true);
+        t.start();
+    }
+
     private void sleep(long t) {
         try {
             Thread.sleep(t);
@@ -145,13 +165,13 @@ public class Engine {
         BufferedWriter bw = null;
         BufferedReader br = null;
         try {
-            p = Runtime.getRuntime().exec(filePath);
+            p = new ProcessBuilder(filePath).start();
             bw = new BufferedWriter(new OutputStreamWriter(p.getOutputStream()));
             br = new BufferedReader(new InputStreamReader(p.getInputStream()));
 
             AtomicBoolean f = new AtomicBoolean(false);
             BufferedReader finalBr = br;
-            (h = Thread.ofVirtual().unstarted(() -> {
+            h = new Thread(() -> {
                 try {
                     String line;
                     while ((line = finalBr.readLine()) != null) {
@@ -170,7 +190,8 @@ public class Engine {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-            })).start();
+            }, "engine-probe");
+            h.start();
 
             bw.write("uci" + System.getProperty("line.separator"));
             bw.flush();
@@ -195,7 +216,7 @@ public class Engine {
             if (p != null) {
                 p.destroy();
             }
-            if (h.isAlive()) {
+            if (h != null && h.isAlive()) {
                 h.interrupt();
             }
             try {
@@ -239,8 +260,8 @@ public class Engine {
         if (str.length < 2 || !validateMove(str[1])) {
             return;
         }
-        if (Properties.getInstance().getEngineDelayEnd() > 0 && Properties.getInstance().getEngineDelayEnd() >= Properties.getInstance().getEngineDelayStart()) {
-            int t = random.nextInt(Properties.getInstance().getEngineDelayStart(), Properties.getInstance().getEngineDelayEnd());
+        if (ConfigProvider.get().getEngineDelayEnd() > 0 && ConfigProvider.get().getEngineDelayEnd() >= ConfigProvider.get().getEngineDelayStart()) {
+            int t = random.nextInt(ConfigProvider.get().getEngineDelayStart(), ConfigProvider.get().getEngineDelayEnd());
             sleep(t);
         }
         if (completedGeneration == analysisGeneration.get()) {
@@ -325,13 +346,13 @@ public class Engine {
         List<String> movesSnapshot = moves == null ? Collections.emptyList() : List.copyOf(moves);
         char[][] boardSnapshot = copyBoard(board);
 
-        Thread.startVirtualThread(() -> {
-            if (Properties.getInstance().getBookSwitch()) {
+        runAsync(() -> {
+            if (ConfigProvider.get().getBookSwitch()) {
                 long s = System.currentTimeMillis();
                 List<BookData> results = OpenBookManager.getInstance().queryBook(
                         boardSnapshot,
                         redGo,
-                        movesSnapshot.size() / 2 >= Properties.getInstance().getOffManualSteps());
+                        movesSnapshot.size() / 2 >= ConfigProvider.get().getOffManualSteps());
                 System.out.println("查询库时间" + (System.currentTimeMillis() - s));
 
                 if (!isCurrentAnalysis(generation)) {
@@ -340,9 +361,9 @@ public class Engine {
 
                 this.cb.showBookResults(results);
                 if (allowBookMove && !results.isEmpty()) {
-                    if (Properties.getInstance().getBookDelayEnd() > 0
-                            && Properties.getInstance().getBookDelayEnd() >= Properties.getInstance().getBookDelayStart()) {
-                        int t = random.nextInt(Properties.getInstance().getBookDelayStart(), Properties.getInstance().getBookDelayEnd());
+                    if (ConfigProvider.get().getBookDelayEnd() > 0
+                            && ConfigProvider.get().getBookDelayEnd() >= ConfigProvider.get().getBookDelayStart()) {
+                        int t = random.nextInt(ConfigProvider.get().getBookDelayStart(), ConfigProvider.get().getBookDelayEnd());
                         sleep(t);
                     }
                     if (isCurrentAnalysis(generation)) {
@@ -353,14 +374,14 @@ public class Engine {
             }
 
             startEngineAnalysis(generation, fenCode, movesSnapshot, null);
-        });
+        }, "engine-book-lookup");
     }
 
     public void analysis(String fenCode, List<String> moves, List<String> tacticList) {
         long generation = beginAnalysisRequest();
         List<String> movesSnapshot = moves == null ? Collections.emptyList() : List.copyOf(moves);
         List<String> tacticSnapshot = tacticList == null ? Collections.emptyList() : List.copyOf(tacticList);
-        Thread.startVirtualThread(() -> startEngineAnalysis(generation, fenCode, movesSnapshot, tacticSnapshot));
+        runAsync(() -> startEngineAnalysis(generation, fenCode, movesSnapshot, tacticSnapshot), "engine-analysis");
     }
 
     private long beginAnalysisRequest() {

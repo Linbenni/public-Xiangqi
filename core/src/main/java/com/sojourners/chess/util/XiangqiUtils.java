@@ -1,6 +1,7 @@
 package com.sojourners.chess.util;
 
-import com.sojourners.chess.board.ChessBoard;
+import com.sojourners.chess.board.BoardPoint;
+import com.sojourners.chess.board.MoveStep;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -754,7 +755,7 @@ public class XiangqiUtils {
         return board;
     }
 
-    public static ChessBoard.Step translateCnMove(char[][] board, StringBuilder sb, String move) {
+    public static MoveStep translateCnMove(char[][] board, StringBuilder sb, String move) {
         if (StringUtils.isEmpty(move) || move.length() < 4) {
             sb.append(move);
             return null;
@@ -780,11 +781,11 @@ public class XiangqiUtils {
                 if (!isP && count == 2 || isP && (count == 2 || count == 3)) {
                     fromJ = j;
                     if (a == '前') {
-                        fromI = isRed ? tmp.getFirst() : tmp.getLast();
+                        fromI = isRed ? tmp.get(0) : tmp.get(tmp.size() - 1);
                     } else if (a == '中') {
                         fromI = tmp.get(1);
                     } else if (a == '后') {
-                        fromI = isRed ? tmp.getLast() : tmp.getFirst();
+                        fromI = isRed ? tmp.get(tmp.size() - 1) : tmp.get(0);
                     }
                     break;
                 }
@@ -860,8 +861,8 @@ public class XiangqiUtils {
             toI = fromI;
             toJ = isRed ? 8 - dist + 1 : dist - 1;
         }
-        sb.append(ChessBoard.stepForEngine(fromJ, fromI, toJ, toI));
-        return new ChessBoard.Step(new ChessBoard.Point(fromJ, fromI), new ChessBoard.Point(toJ, toI));
+        sb.append(FenUtils.stepForEngine(fromJ, fromI, toJ, toI));
+        return new MoveStep(new BoardPoint(fromJ, fromI), new BoardPoint(toJ, toI));
     }
 
     public static void main(String[] args) {
@@ -869,7 +870,7 @@ public class XiangqiUtils {
         System.out.println((int)a);System.out.println((int)b);System.out.println((int)c);
     }
 
-    public static ChessBoard.Step translate(char[][] board, StringBuilder sb, String move, boolean hasGo) {
+    public static MoveStep translate(char[][] board, StringBuilder sb, String move, boolean hasGo) {
         if (StringUtils.isEmpty(move) || move.length() < 4) {
             sb.append(move);
             return null;
@@ -909,7 +910,7 @@ public class XiangqiUtils {
             char pos = getPos(toJ, isRed);
             sb.append(isRed ? map.get(pos) : pos);
         }
-        return new ChessBoard.Step(new ChessBoard.Point(fromJ, fromI), new ChessBoard.Point(toJ, toI));
+        return new MoveStep(new BoardPoint(fromJ, fromI), new BoardPoint(toJ, toI));
     }
 
     private static char getPos(int j, boolean isRed) {

@@ -4,19 +4,21 @@ import com.sojourners.chess.model.BookData;
 import com.sojourners.chess.util.ZobristUtils;
 
 import java.io.File;
-import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
+/**
+ * .pfBook（旋风）开局库。
+ */
 public class PfOpenBook implements OpenBook {
 
-    private Connection connection;
+    private final SqliteAccess access;
 
     private String name;
 
-    public PfOpenBook(String bookPath) throws ClassNotFoundException, SQLException {
-        Class.forName("org.sqlite.JDBC");
-        this.connection = DriverManager.getConnection("jdbc:sqlite:" + bookPath);
+    public PfOpenBook(String bookPath) throws Exception {
+        this.access = SqliteAccessProvider.open(bookPath);
         this.name = new File(bookPath).getName();
     }
 
@@ -36,25 +38,24 @@ public class PfOpenBook implements OpenBook {
 
         String sql = "SELECT * FROM pfBook WHERE vkey = " + zobrist + " and vvalid = 1;";
 
-        try (Statement stmt = this.connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
-
-            while (rs.next()) {
+        try {
+            for (Map<String, Object> row : access.query(sql)) {
                 BookData bd = new BookData();
-                bd.setScore(rs.getInt("vscore"));
-                bd.setWinNum(rs.getInt("vwin"));
-                bd.setDrawNum(rs.getInt("vdraw"));
-                bd.setLoseNum(rs.getInt("vlost"));
+                bd.setScore(BhOpenBook.intValue(row.get("vscore")));
+                bd.setWinNum(BhOpenBook.intValue(row.get("vwin")));
+                bd.setDrawNum(BhOpenBook.intValue(row.get("vdraw")));
+                bd.setLoseNum(BhOpenBook.intValue(row.get("vlost")));
                 int winRate = (int) (10000 * (bd.getWinNum() + bd.getDrawNum() / 2.0d) / (bd.getWinNum() + bd.getDrawNum() + bd.getLoseNum()));
                 bd.setWinRate(winRate / 100d);
-                bd.setNote(rs.getString("vmemo"));
-                int vmove = rs.getInt("vmove");
+                Object memo = row.get("vmemo");
+                bd.setNote(memo == null ? null : memo.toString());
+                int vmove = BhOpenBook.intValue(row.get("vmove"));
                 bd.setMove(ZobristUtils.getMoveFromVmove(vmove, leftRightSwap));
 
                 bd.setSource(this.name);
                 results.add(bd);
             }
-
-        } catch (SQLException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
@@ -69,7 +70,7 @@ public class PfOpenBook implements OpenBook {
     @Override
     public void close() {
         try {
-            this.connection.close();
+            this.access.close();
 
         } catch (Exception e) {
             e.printStackTrace();

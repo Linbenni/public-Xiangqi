@@ -1,6 +1,6 @@
 package com.sojourners.chess.openbook;
 
-import com.sojourners.chess.config.Properties;
+import com.sojourners.chess.config.ConfigProvider;
 import com.sojourners.chess.model.BookData;
 import com.sojourners.chess.util.HttpUtils;
 import com.sojourners.chess.util.StringUtils;
@@ -9,6 +9,9 @@ import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 云端开局库（chessdb.cn）。
+ */
 public class CloudOpenBook implements OpenBook {
 
     private final static String URL = "http://www.chessdb.cn/chessdb.php";
@@ -23,7 +26,7 @@ public class CloudOpenBook implements OpenBook {
         List<BookData> list = new ArrayList<>();
         try {
             String content = "action=queryall&board=" + URLEncoder.encode(fenCode, "UTF-8");
-            String result = HttpUtils.sendByGet(URL, content, Properties.getInstance().getCloudBookTimeout());
+            String result = HttpUtils.sendByGet(URL, content, ConfigProvider.get().getCloudBookTimeout());
             System.out.println(result);
 
             if (StringUtils.isNotEmpty(result) && result.contains("move")) {
@@ -52,7 +55,7 @@ public class CloudOpenBook implements OpenBook {
                             }
                         }
                     }
-                    if (!(onlyFinalPhase || Properties.getInstance().getOnlyCloudFinalPhase()) || finalPhase) {
+                    if (!(onlyFinalPhase || ConfigProvider.get().getOnlyCloudFinalPhase()) || finalPhase) {
                         list.add(bd);
                     }
                 }

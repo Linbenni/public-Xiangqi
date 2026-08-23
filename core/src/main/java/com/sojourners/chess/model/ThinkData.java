@@ -1,11 +1,11 @@
 package com.sojourners.chess.model;
 
-import com.sojourners.chess.board.ChessBoard;
+import com.sojourners.chess.util.FenUtils;
 
 import java.util.List;
 
 /**
- * 思考细节数据显示
+ * 思考细节数据显示。
  */
 public class ThinkData {
 
@@ -41,7 +41,10 @@ public class ThinkData {
 
     }
 
-    public void generate(boolean redGo, boolean isReverse, ChessBoard board) {
+    /**
+     * @param board 当前局面快照，方法内部只读使用
+     */
+    public void generate(boolean redGo, boolean isReverse, char[][] board) {
         redFirst = redGo;
         // 生成title
         StringBuilder sb = new StringBuilder();
@@ -68,7 +71,7 @@ public class ThinkData {
         sb.append("时间: ").append(String.format("%.1fs", time / 1000D));
         title = sb.toString();
         // 生成body
-        translatedMoves = board.translateMoves(detail);
+        translatedMoves = FenUtils.translateMoves(board, detail);
         body = String.join("  ", translatedMoves);
         // 是否有效（处理分析模式下null数据）
         isValid = !body.contains("null");

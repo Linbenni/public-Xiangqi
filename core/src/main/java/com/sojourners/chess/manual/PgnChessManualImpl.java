@@ -1,6 +1,7 @@
 package com.sojourners.chess.manual;
 
-import com.sojourners.chess.board.ChessBoard;
+import com.sojourners.chess.board.BoardPoint;
+import com.sojourners.chess.board.MoveStep;
 import com.sojourners.chess.model.ManualRecord;
 import com.sojourners.chess.util.StringUtils;
 import com.sojourners.chess.util.XiangqiUtils;
@@ -231,7 +232,7 @@ public class PgnChessManualImpl implements ChessManualService {
             String cnMove = mr.getCnMove();
             if (StringUtils.isNotEmpty(cnMove) && mr.getId() > 0) {
                 StringBuilder sb = new StringBuilder();
-                ChessBoard.Step step = XiangqiUtils.translateCnMove(board, sb, cnMove);
+                MoveStep step = XiangqiUtils.translateCnMove(board, sb, cnMove);
                 mr.setMove(sb.toString());
 
                 int fromI = step.getStart().getY(), toI = step.getEnd().getY();

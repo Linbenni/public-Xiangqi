@@ -1,30 +1,31 @@
 package com.sojourners.chess.openbook;
 
-import com.sojourners.chess.board.ChessBoard;
 import com.sojourners.chess.model.BookData;
-import com.sojourners.chess.util.ZobristUtils;
+import com.sojourners.chess.util.FenUtils;
 
 import java.io.File;
-import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
+/**
+ * .xqb（象棋巫师）开局库。
+ */
 public class XqbOpenBook implements OpenBook {
 
-    private Connection connection;
+    private final SqliteAccess access;
 
     private String name;
 
-    public XqbOpenBook(String bookPath) throws ClassNotFoundException, SQLException {
-        Class.forName("org.sqlite.JDBC");
-        this.connection = DriverManager.getConnection("jdbc:sqlite:" + bookPath);
+    public XqbOpenBook(String bookPath) throws Exception {
+        this.access = SqliteAccessProvider.open(bookPath);
         this.name = new File(bookPath).getName();
     }
 
     @Override
     public List<BookData> get(char[][] board, boolean redGo) {
         XQKEY xqKey = new XQKEY();
-        String fenCode = ChessBoard.fenCode(board, redGo);
+        String fenCode = FenUtils.fenCode(board, redGo);
         FenToKey(fenCode, xqKey);
         return BookQuery(xqKey);
     }
@@ -37,7 +38,7 @@ public class XqbOpenBook implements OpenBook {
     @Override
     public void close() {
         try {
-            this.connection.close();
+            this.access.close();
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -202,27 +203,27 @@ public class XqbOpenBook implements OpenBook {
         sql.append("'");
 
         List<BookData> results = new ArrayList<>();
-        try (Statement stmt = this.connection.createStatement(); ResultSet rs = stmt.executeQuery(sql.toString())) {
-            while (rs.next()) {
+        try {
+            for (Map<String, Object> row : access.query(sql.toString())) {
                 BookData bd = new BookData();
-                bd.setScore(rs.getInt("Score"));
-                bd.setWinNum(rs.getInt("Win"));
-                bd.setDrawNum(rs.getInt("Draw"));
-                bd.setLoseNum(rs.getInt("Lost"));
+                bd.setScore(BhOpenBook.intValue(row.get("Score")));
+                bd.setWinNum(BhOpenBook.intValue(row.get("Win")));
+                bd.setDrawNum(BhOpenBook.intValue(row.get("Draw")));
+                bd.setLoseNum(BhOpenBook.intValue(row.get("Lost")));
                 int winRate = (int) (10000 * (bd.getWinNum() + bd.getDrawNum() / 2.0d) / (bd.getWinNum() + bd.getDrawNum() + bd.getLoseNum()));
                 bd.setWinRate(winRate / 100d);
-                bd.setNote(rs.getString("Memo"));
-                int vmove = MirrorMove(rs.getInt("Move"), xqKey.MirrorUD, xqKey.MirrorLR, xqKey.Rows, xqKey.Cols);
+                Object memo = row.get("Memo");
+                bd.setNote(memo == null ? null : memo.toString());
+                int vmove = MirrorMove(BhOpenBook.intValue(row.get("Move")), xqKey.MirrorUD, xqKey.MirrorLR, xqKey.Rows, xqKey.Cols);
                 int from = vmove >> 8;
                 int to = vmove & 0xFF;
-//                System.out.println("move:(row " + (from >> 4) + ",col " + (from & 0xF) + ")->(row " + (to >> 4) + ",col " + (to & 0xF) + "),score:" );
-                bd.setMove(ChessBoard.stepForEngine(from & 0xF, from >> 4, to & 0xF, to >> 4));
+                bd.setMove(FenUtils.stepForEngine(from & 0xF, from >> 4, to & 0xF, to >> 4));
 
                 bd.setSource(this.name);
                 results.add(bd);
             }
 
-        } catch (SQLException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 

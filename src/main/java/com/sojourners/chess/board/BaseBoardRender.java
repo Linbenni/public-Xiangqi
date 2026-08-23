@@ -27,9 +27,9 @@ public abstract class BaseBoardRender implements BoardRender {
         this.gc = canvas.getGraphicsContext2D();
     }
 
-    public void paint(ChessBoard.BoardSize boardSize, char[][] board, ChessBoard.Step prevStep, ChessBoard.Point remark,
+    public void paint(ChessBoard.BoardSize boardSize, char[][] board, MoveStep prevStep, BoardPoint remark,
                       boolean stepTip, boolean showMultiPV, List<ChessBoard.MoveTip> moveTips, boolean isReverse, boolean showNumber,
-                      boolean manualTip, List<ChessBoard.Step> manualList) {
+                      boolean manualTip, List<MoveStep> manualList) {
         Properties prop = Properties.getInstance();
         int padding = getPadding(boardSize);
         int piece = getPieceSize(boardSize);
@@ -62,7 +62,7 @@ public abstract class BaseBoardRender implements BoardRender {
         // 棋谱变招
         if (manualTip && manualList != null && manualList.size() > 1) {
             for (int i = manualList.size() - 1; i >= 0; i--) {
-                ChessBoard.Step manual = manualList.get(i);
+                MoveStep manual = manualList.get(i);
                 drawStepTips(pos, piece, manual.getStart().x, manual.getStart().y, manual.getEnd().x, manual.getEnd().y,
                         true, i + 1, isReverse, Color.web(prop.getBranchStepColor()), prop.getBranchStepOpacity(),
                         Color.web(prop.getBranchStepNumberColor()));
@@ -72,13 +72,13 @@ public abstract class BaseBoardRender implements BoardRender {
         if (stepTip && moveTips != null) {
             for (int i = moveTips.size() - 1; i >= 0; i--) {
                 ChessBoard.MoveTip tip = moveTips.get(i);
-                ChessBoard.Step second = tip.getSecond();
+                MoveStep second = tip.getSecond();
                 if (second != null) {
                     drawStepTips(pos, piece, second.getStart().x, second.getStart().y, second.getEnd().x, second.getEnd().y,
                             showMultiPV, i + 1, isReverse, Color.web(prop.getSecondStepColor()), prop.getSecondStepOpacity(),
                             Color.web(prop.getSecondStepNumberColor()));
                 }
-                ChessBoard.Step first = tip.getFirst();
+                MoveStep first = tip.getFirst();
                 if (first != null) {
                     drawStepTips(pos, piece, first.getStart().x, first.getStart().y, first.getEnd().x, first.getEnd().y,
                             showMultiPV, i + 1, isReverse, Color.web(prop.getFirstStepColor()), prop.getFirstStepOpacity(),
@@ -89,7 +89,7 @@ public abstract class BaseBoardRender implements BoardRender {
     }
 
     // paint edit chess board demo piece
-    public void paintDemoBoard(ChessBoard.BoardSize boardSize, char[][] board, ChessBoard.Point remark) {
+    public void paintDemoBoard(ChessBoard.BoardSize boardSize, char[][] board, BoardPoint remark) {
         int piece = getPieceSize(boardSize);
         int padding = getPadding(boardSize);
         int pos = padding + piece / 2;

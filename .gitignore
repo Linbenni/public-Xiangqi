@@ -1,2 +1,6 @@
 graphify-out/
 target/
+.gradle/
+build/
+core/build/
+output/

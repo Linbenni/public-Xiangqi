@@ -20,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.runtime.Composable
@@ -38,6 +39,8 @@ import com.sojourners.tchess.ui.analysis.AnalysisScreen
 import com.sojourners.tchess.ui.analysis.AnalysisViewModel
 import com.sojourners.tchess.ui.game.GameScreen
 import com.sojourners.tchess.ui.game.GameViewModel
+import com.sojourners.tchess.ui.manual.ManualScreen
+import com.sojourners.tchess.ui.manual.ManualViewModel
 import com.sojourners.tchess.ui.settings.SettingsScreen
 import com.sojourners.tchess.ui.settings.SettingsViewModel
 import com.sojourners.tchess.ui.theme.TchessTheme
@@ -45,6 +48,7 @@ import com.sojourners.tchess.ui.theme.TchessTheme
 /** 底部导航页签 */
 enum class Tab(val label: String) {
     GAME("对弈"),
+    MANUAL("棋谱"),
     ANALYSIS("分析"),
     SETTINGS("设置"),
 }
@@ -52,6 +56,7 @@ enum class Tab(val label: String) {
 class MainActivity : ComponentActivity() {
 
     private val gameVm: GameViewModel by viewModels()
+    private val manualVm: ManualViewModel by viewModels()
     private val analysisVm: AnalysisViewModel by viewModels()
     private val settingsVm: SettingsViewModel by viewModels()
 
@@ -78,6 +83,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     MainTabs(
                         gameVm = gameVm,
+                        manualVm = manualVm,
                         analysisVm = analysisVm,
                         settingsVm = settingsVm,
                     )
@@ -106,6 +112,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MainTabs(
     gameVm: GameViewModel,
+    manualVm: ManualViewModel,
     analysisVm: AnalysisViewModel,
     settingsVm: SettingsViewModel,
 ) {
@@ -121,11 +128,13 @@ private fun MainTabs(
         // 先隐藏旧页再进入新页：引擎绑定按页切换（对弈/分析共用同一进程）
         when (tab) {
             Tab.GAME -> gameVm.onScreenHidden()
+            Tab.MANUAL -> manualVm.pause() // 离开棋谱页停掉复盘播放
             Tab.ANALYSIS -> analysisVm.onHidden()
             Tab.SETTINGS -> {}
         }
         when (newTab) {
             Tab.GAME -> gameVm.onScreenShown()
+            Tab.MANUAL -> {}
             Tab.ANALYSIS -> analysisVm.onShown()
             Tab.SETTINGS -> {}
         }
@@ -141,6 +150,12 @@ private fun MainTabs(
                     onClick = { selectTab(Tab.GAME) },
                     icon = { Icon(Icons.Filled.Style, contentDescription = null) },
                     label = { Text(Tab.GAME.label) },
+                )
+                NavigationBarItem(
+                    selected = tab == Tab.MANUAL,
+                    onClick = { selectTab(Tab.MANUAL) },
+                    icon = { Icon(Icons.Filled.MenuBook, contentDescription = null) },
+                    label = { Text(Tab.MANUAL.label) },
                 )
                 NavigationBarItem(
                     selected = tab == Tab.ANALYSIS,
@@ -163,6 +178,7 @@ private fun MainTabs(
                     com.sojourners.tchess.ui.analysis.AnalysisHandoff.offer(gameVm.exportForAnalysis())
                     selectTab(Tab.ANALYSIS)
                 })
+                Tab.MANUAL -> ManualScreen(manualVm)
                 Tab.ANALYSIS -> AnalysisScreen(analysisVm)
                 Tab.SETTINGS -> SettingsScreen(settingsVm)
             }

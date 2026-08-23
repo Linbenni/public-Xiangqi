@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M4 FileProvider 共享路径：棋谱导出/分享临时目录 -->
+<paths>
+    <cache-path
+        name="manual_share"
+        path="manual_share/" />
+    <cache-path
+        name="manual_export"
+        path="manual_export/" />
+</paths>

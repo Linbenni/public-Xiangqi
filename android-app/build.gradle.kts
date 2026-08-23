@@ -18,8 +18,8 @@ android {
         minSdk = 24
         targetSdk = 36
         // 版本号与桌面 App.VERSION 对齐（ANDROID_PLAN.md §6b）
-        versionCode = 3
-        versionName = "1.9-m3"
+        versionCode = 4
+        versionName = "1.9-m4"
     }
 
     buildTypes {

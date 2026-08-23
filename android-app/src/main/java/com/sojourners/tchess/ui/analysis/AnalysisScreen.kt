@@ -172,6 +172,51 @@ fun AnalysisScreen(vm: AnalysisViewModel) {
             }
         }
 
+        // ---- M4 开局库命中（挂库开关打开时显示） ----
+        if (ui.books.isNotEmpty()) {
+            Text(
+                text = "开局库",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            LazyColumn(modifier = Modifier.fillMaxWidth().height(72.dp)) {
+                itemsIndexed(ui.books) { _, b ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp),
+                    ) {
+                        Text(
+                            text = b.word,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            modifier = Modifier.fillMaxWidth(0.28f),
+                        )
+                        Text(
+                            text = b.scoreText,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            modifier = Modifier.fillMaxWidth(0.18f),
+                        )
+                        Text(
+                            text = b.winRateText,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            modifier = Modifier.fillMaxWidth(0.18f),
+                        )
+                        Text(
+                            text = listOfNotNull(b.source, b.note).joinToString(" · "),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+
         // ---- 思考记录表格 ----
         Text(
             text = "思考记录（主变迭代）",

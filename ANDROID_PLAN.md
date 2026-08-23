@@ -130,13 +130,16 @@ UI 为原生触屏体验。
 - 验收结果：core 测试与纯净性检查全绿；安卓侧新增 PvBoard/EvalBar/AppSettings 单测全绿；
   `assembleDebug` 出包且含 libpikafish.so + pikafish.nnue；实现说明见 `docs/android-m3.md`
 
-### M4 棋谱 + 开局库（2~3 周）
-- [ ] SAF 导入/导出 xqf/pgn/cbr/txq；FileProvider 分享
-- [ ] 棋谱浏览页：着法列表、前进/后退、局面跳转、复盘模式
-- [ ] 开局库：xqb/pf/bh 文件导入（SAF→filesDir）、云开局库（HttpUtils 直连）、
+### M4 棋谱 + 开局库（2~3 周）—— ✅ 代码完成（真机回归待装机验证）
+- [x] SAF 导入/导出 xqf/pgn/cbr/txq；FileProvider 分享
+- [x] 棋谱浏览页：着法列表、前进/后退、局面跳转、复盘模式
+- [x] 开局库：xqb/pf/bh 文件导入（SAF→filesDir）、云开局库（HttpUtils 直连）、
       本地库（框架 SQLite 实现 `SqliteAccess` + LocalBook 管理 UI）
-- [ ] 对弈/分析自动挂库（OpenBookManager 复用）
-- 验收标准：桌面版产生的棋谱/库文件在手机端打开结果一致（抽样 FEN 对照）
+- [x] 对弈/分析自动挂库（OpenBookManager 复用）
+- 验收结果：core 测试与纯净性检查全绿；安卓侧新增 ManualNavigator/FEN 一致性/
+  格式路由/库文件命名单测全绿；`assembleDebug` 出包；实现说明见 `docs/android-m4.md`
+- 验收标准：桌面版产生的棋谱/库文件在手机端打开结果一致（抽样 FEN 对照——
+  PGN 解析→导航重放→FEN 与独立坐标推演一致性已入单测，真机抽样待验）
 
 ### M5 打磨与发布（1~2 周）
 - [ ] 设置中心：明暗主题（沿用现有 CSS 色板）、棋盘配色、时间设置

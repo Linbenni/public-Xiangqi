@@ -3,6 +3,7 @@ package com.sojourners.tchess.config
 import android.content.Context
 import com.sojourners.chess.config.AppConfig
 import com.sojourners.chess.openbook.MoveRule
+import com.sojourners.tchess.settings.BookSettings
 import com.sojourners.tchess.settings.EngineSettings
 import com.sojourners.tchess.settings.PerfProfile
 import com.sojourners.tchess.settings.TimeControl
@@ -42,6 +43,41 @@ class AndroidConfigStore(context: Context) : AppConfig {
     @Volatile private var timeControl: TimeControl = TimeControl.FIXED_TIME
     @Volatile private var timeValue: Long = EngineSettings.DEFAULT_TIME_VALUE
     @Volatile private var perfProfile: PerfProfile = PerfProfile.BALANCED
+
+    /** 当前开局库设置快照（已做范围收敛） */
+    @Synchronized
+    fun snapshotBookSettings(): BookSettings = BookSettings(
+        bookSwitch = bookSwitch,
+        useCloudBook = useCloudBook,
+        localBookFirst = localBookFirst,
+        moveRule = moveRule,
+        offManualSteps = offManualSteps,
+        onlyCloudFinalPhase = onlyCloudFinalPhase,
+        cloudBookTimeout = cloudBookTimeout,
+    ).clamp()
+
+    @Synchronized
+    fun updateBookSettings(s: BookSettings) {
+        val c = s.clamp()
+        bookSwitch = c.bookSwitch
+        useCloudBook = c.useCloudBook
+        localBookFirst = c.localBookFirst
+        moveRule = c.moveRule
+        offManualSteps = c.offManualSteps
+        onlyCloudFinalPhase = c.onlyCloudFinalPhase
+        cloudBookTimeout = c.cloudBookTimeout
+        persistAsync()
+    }
+
+    /** 本地库列表变化（导入/删除/排序）后整体替换并落盘 */
+    @Synchronized
+    fun updateOpenBooks(paths: List<String>) {
+        openBookList = ArrayList(paths)
+        persistAsync()
+    }
+
+    /** 本地库路径列表（UI 展示用；core 侧经 getOpenBookList 读取） */
+    fun currentOpenBooks(): List<String> = openBookList
 
     /** 应用启动时同步加载（文件仅几 KB）。 */
     fun loadOrDefault() {

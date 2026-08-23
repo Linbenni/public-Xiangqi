@@ -92,7 +92,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app), EngineConsumer {
     }
 
     override fun onBookResults(list: MutableList<BookData>?) {
-        // M4 开局库接入
+        // M4：对弈自动挂库时 core 命中库着法会直接经 bestMove 回调走棋，
+        // 着法展示与普通走子一致（lastMoveText），无需额外 UI；分析页负责库着法列表。
     }
 
     init {
@@ -218,7 +219,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app), EngineConsumer {
         // 与桌面 configureEngineForSearch 同序：参数 → 搜索策略 → go
         session.applySettings(appCtx.configStore.snapshotSettings())
         e.setAnalysisModel(Engine.AnalysisModel.FIXED_TIME, _ui.value.difficulty.moveTimeMillis)
-        e.analysis(logic.currentFen(), logic.moves, logic.snapshotBoard(), logic.redToGo, false)
+        // M4 自动挂库：对弈模式允许开局库直接走棋（桌面 engineGo 的 allowBookMove=!分析模式）。
+        // 挂库开关/云库/本地库由 core 经 ConfigProvider + OpenBookManager 处理。
+        e.analysis(logic.currentFen(), logic.moves, logic.snapshotBoard(), logic.redToGo, true)
     }
 
     private fun onEngineBestMove(move: String?) {

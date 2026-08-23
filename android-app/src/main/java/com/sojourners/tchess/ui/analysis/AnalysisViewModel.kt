@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
 import com.sojourners.chess.board.BoardPoint
+import com.sojourners.chess.model.BookData
 import com.sojourners.chess.model.ThinkData
 import com.sojourners.chess.util.FenUtils
 import com.sojourners.chess.util.XiangqiUtils
@@ -23,6 +24,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.util.concurrent.atomic.AtomicBoolean
+
+/** 开局库命中一行（M4）：中文着法 + 分数/胜率/来源/备注 */
+data class BookRow(
+    val word: String,
+    val scoreText: String,
+    val winRateText: String,
+    val source: String?,
+    val note: String?,
+)
 
 data class AnalysisUiState(
     /** 输入框内容（可编辑） */
@@ -47,6 +57,8 @@ data class AnalysisUiState(
     val previewTo: BoardPoint? = null,
     /** 当前选中的变化序号（列表高亮用） */
     val selectedPv: Int = 1,
+    /** M4 开局库命中（挂库开关打开时随每次分析刷新） */
+    val books: List<BookRow> = emptyList(),
 ) {
     val canStart: Boolean get() = loadedFen != null && engineUnavailableReason == null
 }
@@ -173,6 +185,7 @@ class AnalysisViewModel(app: Application) : AndroidViewModel(app), EngineConsume
                 previewTo = null,
                 timeStrategy = "",
                 selectedPv = 1,
+                books = emptyList(),
             )
         }
     }
@@ -194,7 +207,9 @@ class AnalysisViewModel(app: Application) : AndroidViewModel(app), EngineConsume
         e.setAnalysisModel(s.timeControl.toEngineModel(), s.timeValue)
 
         pvBoard.clear()
-        _ui.update { it.copy(running = true, timeStrategy = strategyText(s), message = null) }
+        _ui.update { it.copy(running = true, timeStrategy = strategyText(s), message = null, books = emptyList()) }
+        // M4：分析模式 allowBookMove=false（与桌面一致）——库着法仅展示不自动走棋；
+        // 挂库开关打开时 core 会先回调 showBookResults 再启动引擎搜索。
         e.analysis(logic.currentFen(), logic.moves, logic.snapshotBoard(), logic.redToGo, false)
     }
 
@@ -219,6 +234,33 @@ class AnalysisViewModel(app: Application) : AndroidViewModel(app), EngineConsume
         if (flushScheduled.compareAndSet(false, true)) {
             main.postDelayed({ flush() }, FLUSH_INTERVAL_MS)
         }
+    }
+
+    override fun onBookResults(list: MutableList<BookData>?) {
+        // book-lookup 线程回调：在当前局面下翻译中文着法（与桌面 board.translate 同源），
+        // 空列表同样下发以清空展示（挂库关闭时由 startAnalysis 主动清）。
+        val snapshot = list ?: emptyList()
+        val board = logic.snapshotBoard()
+        val rows = ArrayList<BookRow>(snapshot.size)
+        for (bd in snapshot) {
+            val move = bd.move ?: continue
+            try {
+                val sb = StringBuilder()
+                XiangqiUtils.translate(board, sb, move, false)
+                rows.add(
+                    BookRow(
+                        word = sb.toString().ifBlank { move },
+                        scoreText = bd.score.toString(),
+                        winRateText = "%.0f%%".format(bd.winRate),
+                        source = bd.source,
+                        note = bd.note?.takeIf { it.isNotBlank() },
+                    ),
+                )
+            } catch (_: Exception) {
+                // 单条翻译失败不影响其余行
+            }
+        }
+        main.post { _ui.update { it.copy(books = rows) } }
     }
 
     // ---------------------------------------------------------------- 节流刷新（主线程）

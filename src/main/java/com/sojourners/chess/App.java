@@ -1,10 +1,13 @@
 package com.sojourners.chess;
 
+import com.sojourners.chess.config.ConfigProvider;
 import com.sojourners.chess.config.Properties;
 import com.sojourners.chess.controller.ColorSettingController;
 import com.sojourners.chess.controller.Controller;
 import com.sojourners.chess.controller.EditChessBoardController;
 import com.sojourners.chess.controller.LocalBookController;
+import com.sojourners.chess.openbook.JdbcSqliteAccess;
+import com.sojourners.chess.openbook.SqliteAccessProvider;
 import javafx.application.Application;
 import javafx.event.Event;
 import javafx.event.EventHandler;
@@ -42,6 +45,10 @@ public class App extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
+        // 初始化核心层 SPI：配置与 SQLite 访问
+        ConfigProvider.set(Properties.getInstance());
+        SqliteAccessProvider.setFactory(JdbcSqliteAccess::new);
+
         FXMLLoader fxmlLoader = new FXMLLoader();
         fxmlLoader.setLocation(getClass().getResource("/fxml/app.fxml"));
         Parent root = fxmlLoader.load();

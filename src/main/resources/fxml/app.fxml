@@ -4,6 +4,7 @@
 <?import javafx.scene.canvas.Canvas?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.CheckMenuItem?>
+<?import javafx.scene.control.CheckBox?>
 <?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
@@ -26,6 +27,7 @@
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.ColumnConstraints?>
 <?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.RowConstraints?>
 <?import javafx.scene.text.Font?>
 
@@ -230,9 +232,9 @@
                                     <items>
                                         <AnchorPane minHeight="-Infinity" minWidth="-Infinity" prefHeight="0.0" prefWidth="0.0">
                                             <children>
-                                                <BorderPane fx:id="listViewPane" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                                                <BorderPane fx:id="listViewPane" stylesheets="@../style/app.css" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
                                                     <center>
-                                                        <ListView fx:id="listView" minHeight="-Infinity" minWidth="-Infinity" prefHeight="0.0" prefWidth="0.0" stylesheets="@../style/app.css" BorderPane.alignment="CENTER" />
+                                                        <ListView fx:id="listView" minHeight="-Infinity" minWidth="-Infinity" prefHeight="0.0" prefWidth="0.0" styleClass="analysis-list" BorderPane.alignment="CENTER" />
                                                     </center>
                                                     <top>
                                                         <ToolBar minHeight="-Infinity" minWidth="-Infinity" prefHeight="30.0" BorderPane.alignment="CENTER">
@@ -242,9 +244,20 @@
                                                                 <ComboBox fx:id="threadComboBox" editable="true" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="22.0" prefWidth="60.0" stylesheets="@../style/combobox.css" />
                                                                 <ComboBox fx:id="hashComboBox" editable="true" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="22.0" prefWidth="65.0" stylesheets="@../style/combobox.css" />
                                                                 <Label text="MB" />
+                                                                <CheckBox fx:id="engineHistoryCheckBox" mnemonicParsing="false" text="历史" />
                                                             </items>
                                                         </ToolBar>
                                                     </top>
+                                                    <bottom>
+                                                        <HBox alignment="CENTER_LEFT" spacing="10.0" styleClass="analysis-status-bar" BorderPane.alignment="CENTER">
+                                                            <children>
+                                                                <Label fx:id="analysisDepthLabel" text="深度 —" />
+                                                                <Label fx:id="analysisNpsLabel" text="算力 —" />
+                                                                <Label fx:id="analysisNodesLabel" text="节点 —" />
+                                                                <Label fx:id="analysisTimeLabel" text="耗时 —" />
+                                                            </children>
+                                                        </HBox>
+                                                    </bottom>
                                                 </BorderPane>
                                             </children></AnchorPane>
                                         <AnchorPane minHeight="-Infinity" minWidth="-Infinity" prefHeight="0.0" prefWidth="0.0">

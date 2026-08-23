@@ -2,6 +2,7 @@ package com.sojourners.chess.controller;
 
 import com.sojourners.chess.App;
 import com.sojourners.chess.board.ChessBoard;
+import com.sojourners.chess.board.MoveStep;
 import com.sojourners.chess.config.Properties;
 import com.sojourners.chess.controller.handle.ChessManualCallBack;
 import com.sojourners.chess.controller.handle.ChessManualHandle;
@@ -15,6 +16,7 @@ import com.sojourners.chess.model.ManualRecord;
 import com.sojourners.chess.model.ThinkData;
 import com.sojourners.chess.openbook.OpenBookManager;
 import com.sojourners.chess.util.*;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -24,7 +26,9 @@ import javafx.embed.swing.SwingFXUtils;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
+import javafx.geometry.Orientation;
 import javafx.geometry.Side;
+import javafx.scene.Node;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
@@ -37,13 +41,19 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.image.WritableImage;
+import javafx.scene.input.KeyCode;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.util.Callback;
+import javafx.util.Duration;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -51,10 +61,20 @@ import java.awt.image.BufferedImage;
 import java.awt.image.RenderedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCallBack {
+
+    private static final double ANALYSIS_UI_REFRESH_MILLIS = 100d;
 
     @FXML
     private Canvas canvas;
@@ -74,6 +94,26 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
     @FXML
     private ListView<ThinkData> listView;
+
+    private ScrollBar analysisScrollBar;
+    private boolean followLatestAnalysis = true;
+    private final Map<Integer, ThinkData> latestAnalysisByPv = new TreeMap<>();
+    private final List<ThinkData> analysisHistory = new ArrayList<>();
+    private final Set<ThinkData> expandedVariations = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Map<Integer, ThinkData> pendingAnalysisByPv = new ConcurrentHashMap<>();
+    private final AtomicBoolean analysisFlushScheduled = new AtomicBoolean();
+    private PauseTransition analysisFlushDelay;
+
+    @FXML
+    private CheckBox engineHistoryCheckBox;
+    @FXML
+    private Label analysisDepthLabel;
+    @FXML
+    private Label analysisNpsLabel;
+    @FXML
+    private Label analysisNodesLabel;
+    @FXML
+    private Label analysisTimeLabel;
 
     @FXML
     private ComboBox<String> engineComboBox;
@@ -330,9 +370,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
                     }
                 }
             }
-            engine.setThreadNum(prop.getThreadNum());
-            engine.setHashSize(prop.getHashSize());
-            engine.setAnalysisModel(robotAnalysis.getValue() ? Engine.AnalysisModel.INFINITE : prop.getAnalysisModel(), prop.getAnalysisValue());
+            configureEngineForSearch();
             engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(), tacticList);
         }
     }
@@ -413,6 +451,15 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         linkMode.setValue(false);
     }
 
+    @Override
+    public void linkerSelectionCancelled() {
+        Platform.runLater(() -> {
+            if (linkMode.getValue()) {
+                stopGraphLink();
+            }
+        });
+    }
+
     private void engineGo() {
         if (engine == null) {
             DialogUtils.showWarningDialog("提示", "引擎未加载");
@@ -428,10 +475,22 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         // 重置变招列表
         tacticList = null;
 
+        // 先让上一代搜索失效，再清空 UI，避免旧 info 在 clear 之后重新排入 JavaFX 队列。
+        engine.stop();
+        clearAnalysisView();
+        resumeAnalysisAutoFollow();
+        configureEngineForSearch();
+        engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(),
+                this.board.getBoard(), redGo, !robotAnalysis.getValue());
+    }
+
+    private void configureEngineForSearch() {
         engine.setThreadNum(prop.getThreadNum());
         engine.setHashSize(prop.getHashSize());
-        engine.setAnalysisModel(robotAnalysis.getValue() ? Engine.AnalysisModel.INFINITE : prop.getAnalysisModel(), prop.getAnalysisValue());
-        engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(), this.board.getBoard(), redGo);
+        engine.setMultiPV(prop.getEngineMultiPV());
+        // 分析/观战模式也必须遵守用户选择的固定时间、固定深度或固定节点策略。
+        engine.setAnalysisModel(prop.getAnalysisModel(), prop.getAnalysisValue());
+        board.showMultiPV(engine.getMultiPV() > 1);
     }
 
     @FXML
@@ -656,35 +715,36 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         // 读取配置
         prop = Properties.getInstance();
         // 思考细节listView
-        listView.setCellFactory(new Callback() {
+        listView.setCellFactory(view -> new ListCell<>() {
             @Override
-            public Object call(Object param) {
-                ListCell<ThinkData> cell = new ListCell<ThinkData>() {
-                    @Override
-                    protected void updateItem(ThinkData item, boolean bln) {
-                        super.updateItem(item, bln);
-                        if (!bln) {
-                            VBox box = new VBox();
-
-                            Label title = new Label();
-                            title.setText(item.getTitle());
-                            setScoreStyle(title, item.getScore());
-                            box.getChildren().add(title);
-
-                            Label body = new Label();
-                            body.setText(item.getBody());
-                            body.setWrapText(true);
-                            body.setMaxWidth(listView.getWidth() / 1.124);//bind(listView.widthProperty().divide(1.124));
-                            box.getChildren().add(body);
-
-                            setGraphic(box);
-                        }
-                    }
-                };
-                return cell;
+            protected void updateItem(ThinkData item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(null);
+                setGraphic(empty || item == null ? null : createAnalysisCard(item));
             }
-
         });
+        listView.setOnKeyPressed(event -> {
+            ThinkData selected = listView.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                return;
+            }
+            if (event.getCode() == KeyCode.ENTER) {
+                focusVariation(selected);
+            } else if (event.getCode() == KeyCode.SPACE) {
+                if (!expandedVariations.add(selected)) {
+                    expandedVariations.remove(selected);
+                }
+                refreshAnalysisList();
+                event.consume();
+            }
+        });
+        engineHistoryCheckBox.selectedProperty().addListener((observable, oldValue, newValue) -> {
+            followLatestAnalysis = true;
+            refreshAnalysisList();
+        });
+        listView.skinProperty().addListener((observable, oldSkin, newSkin) ->
+                Platform.runLater(this::bindAnalysisScrollBar));
+        Platform.runLater(this::bindAnalysisScrollBar);
         // 按钮
         setButtonTips();
         // 棋盘
@@ -716,6 +776,214 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         newChessBoard(null);
         // 加载引擎
         loadEngine(prop.getEngineName());
+    }
+
+    private VBox createAnalysisCard(ThinkData data) {
+        VBox card = new VBox();
+        card.getStyleClass().add("analysis-card");
+        card.prefWidthProperty().bind(listView.widthProperty().subtract(32));
+        card.maxWidthProperty().bind(listView.widthProperty().subtract(32));
+
+        HBox header = new HBox();
+        header.getStyleClass().add("analysis-card-header");
+
+        Label rank = new Label(formatPvRank(data.getPv()));
+        rank.getStyleClass().add("pv-rank");
+        if (data.getPv() == 1) {
+            rank.getStyleClass().add("pv-best");
+        }
+        header.getChildren().add(rank);
+
+        List<String> moves = data.getTranslatedMoves();
+        Label firstMove = new Label(moves == null || moves.isEmpty() ? "—" : moves.get(0));
+        firstMove.getStyleClass().add("pv-first-move");
+        header.getChildren().add(firstMove);
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        header.getChildren().add(spacer);
+
+        Label depth = new Label("深度 " + valueOrDash(data.getDepth()));
+        depth.getStyleClass().add("pv-depth");
+        header.getChildren().add(depth);
+
+        Label evaluation = new Label(formatEvaluation(data));
+        evaluation.getStyleClass().add("pv-evaluation");
+        applyEvaluationStyle(evaluation, data.getRedScore());
+        header.getChildren().add(evaluation);
+        card.getChildren().add(header);
+
+        FlowPane variation = new FlowPane(6, 4);
+        variation.getStyleClass().add("pv-variation");
+        variation.prefWrapLengthProperty().bind(card.widthProperty().subtract(20));
+        addVariationMoves(variation, data);
+        card.getChildren().add(variation);
+
+        Tooltip fullVariation = new Tooltip(data.getBody());
+        fullVariation.setWrapText(true);
+        fullVariation.setMaxWidth(520);
+        Tooltip.install(card, fullVariation);
+
+        card.setOnMouseClicked(event -> {
+            focusVariation(data);
+            if (event.getClickCount() == 2) {
+                if (!expandedVariations.remove(data)) {
+                    expandedVariations.add(data);
+                }
+                listView.refresh();
+            }
+        });
+        return card;
+    }
+
+    private void addVariationMoves(FlowPane variation, ThinkData data) {
+        List<String> moves = data.getTranslatedMoves();
+        if (moves == null || moves.isEmpty()) {
+            variation.getChildren().add(new Label("暂无有效变例"));
+            return;
+        }
+        boolean redFirst = Boolean.TRUE.equals(data.getRedFirst());
+        int visibleMoves = expandedVariations.contains(data) ? moves.size() : Math.min(moves.size(), 12);
+        for (int i = 0; i < visibleMoves; i++) {
+            boolean redMove = redFirst == (i % 2 == 0);
+            if (redMove) {
+                int round = (i + (redFirst ? 0 : 1)) / 2 + 1;
+                Label roundLabel = new Label(round + ".");
+                roundLabel.getStyleClass().add("move-number");
+                variation.getChildren().add(roundLabel);
+            } else if (i == 0) {
+                Label roundLabel = new Label("1...");
+                roundLabel.getStyleClass().add("move-number");
+                variation.getChildren().add(roundLabel);
+            }
+
+            Label move = new Label(moves.get(i));
+            move.getStyleClass().add(redMove ? "red-move" : "black-move");
+            variation.getChildren().add(move);
+        }
+        if (visibleMoves < moves.size()) {
+            Label more = new Label("… 双击展开");
+            more.getStyleClass().add("pv-more");
+            variation.getChildren().add(more);
+        }
+    }
+
+    private String formatPvRank(Integer pv) {
+        int rank = pv == null ? 1 : pv;
+        return switch (rank) {
+            case 1 -> "#1 最佳";
+            case 2 -> "#2 次选";
+            default -> "#" + rank + " 备选";
+        };
+    }
+
+    private String formatEvaluation(ThinkData data) {
+        int score = data.getRedScore() == null ? 0 : data.getRedScore();
+        if (data.getMate() != null) {
+            return (score >= 0 ? "红方" : "黑方") + Math.abs(score) + "步杀";
+        }
+        int absoluteScore = Math.abs(score);
+        String assessment;
+        if (absoluteScore <= 10) {
+            assessment = "均势";
+        } else if (absoluteScore <= 50) {
+            assessment = (score > 0 ? "红方" : "黑方") + "微优";
+        } else if (absoluteScore <= 150) {
+            assessment = (score > 0 ? "红方" : "黑方") + "优势";
+        } else {
+            assessment = (score > 0 ? "红方" : "黑方") + "明显优势";
+        }
+        return String.format("%+.2f · %s", score / 100d, assessment);
+    }
+
+    private void applyEvaluationStyle(Label label, Integer score) {
+        int value = score == null ? 0 : score;
+        label.getStyleClass().add(value > 0 ? "red-evaluation" : value < 0 ? "black-evaluation" : "balanced-evaluation");
+    }
+
+    private void focusVariation(ThinkData data) {
+        if (data.getDetail() == null || data.getDetail().isEmpty()) {
+            return;
+        }
+        board.setTip(data.getDetail().get(0), data.getDetail().size() > 1 ? data.getDetail().get(1) : null, data.getPv());
+    }
+
+    private String valueOrDash(Object value) {
+        return value == null ? "—" : String.valueOf(value);
+    }
+
+    private void refreshAnalysisList() {
+        if (engineHistoryCheckBox.isSelected()) {
+            listView.getItems().setAll(analysisHistory);
+        } else {
+            listView.getItems().setAll(latestAnalysisByPv.values());
+        }
+        if (followLatestAnalysis && !listView.getItems().isEmpty()) {
+            listView.scrollTo(0);
+        }
+    }
+
+    private void clearAnalysisView() {
+        pendingAnalysisByPv.clear();
+        analysisFlushScheduled.set(false);
+        if (analysisFlushDelay != null) {
+            analysisFlushDelay.stop();
+        }
+        latestAnalysisByPv.clear();
+        analysisHistory.clear();
+        expandedVariations.clear();
+        listView.getItems().clear();
+        analysisDepthLabel.setText("深度 —");
+        analysisNpsLabel.setText("算力 —");
+        analysisNodesLabel.setText("节点 —");
+        analysisTimeLabel.setText("耗时 —");
+    }
+
+    private void updateAnalysisStatus(ThinkData data) {
+        analysisDepthLabel.setText("深度 " + valueOrDash(data.getDepth()));
+        analysisNpsLabel.setText("算力 " + formatLargeNumber(data.getNps()) + "/s");
+        analysisNodesLabel.setText("节点 " + formatLargeNumber(data.getNodes()));
+        analysisTimeLabel.setText(data.getTime() == null
+                ? "耗时 —"
+                : String.format("耗时 %.1fs", data.getTime() / 1000d));
+    }
+
+    private String formatLargeNumber(Long value) {
+        if (value == null) {
+            return "—";
+        }
+        if (value >= 1_000_000_000L) {
+            return String.format("%.1fB", value / 1_000_000_000d);
+        }
+        if (value >= 1_000_000L) {
+            return String.format("%.1fM", value / 1_000_000d);
+        }
+        if (value >= 1_000L) {
+            return String.format("%.0fK", value / 1_000d);
+        }
+        return String.valueOf(value);
+    }
+
+    private void bindAnalysisScrollBar() {
+        if (analysisScrollBar != null) {
+            return;
+        }
+        listView.applyCss();
+        for (Node node : listView.lookupAll(".scroll-bar")) {
+            if (node instanceof ScrollBar scrollBar && scrollBar.getOrientation() == Orientation.VERTICAL) {
+                analysisScrollBar = scrollBar;
+                scrollBar.valueProperty().addListener((observable, oldValue, newValue) ->
+                        followLatestAnalysis = newValue.doubleValue() <= scrollBar.getMin() + 0.0001d);
+                return;
+            }
+        }
+    }
+
+    private void resumeAnalysisAutoFollow() {
+        followLatestAnalysis = true;
+        if (!listView.getItems().isEmpty()) {
+            listView.scrollTo(0);
+        }
     }
 
     private void importFromBufferImage(BufferedImage img) {
@@ -942,7 +1210,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         // 重置趋势图
         refreshLineChart();
         // 重置引擎思考输出
-        listView.getItems().clear();
+        clearAnalysisView();
         // 清空思考状态信息
         this.infoShowLabel.setText("");
 
@@ -1137,7 +1405,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
      * 连线模式下自动点击走棋
      * @param step
      */
-    private void trickAutoClick(ChessBoard.Step step) {
+    private void trickAutoClick(MoveStep step) {
         if (step != null) {
             int x1 = step.getStart().getX(), y1 = step.getStart().getY();
             int x2 = step.getEnd().getX(), y2 = step.getEnd().getY();
@@ -1155,7 +1423,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     @Override
     public void bestMove(String first, String second) {
         if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue()) {
-            ChessBoard.Step s = board.stepForBoard(first);
+            MoveStep s = board.stepForBoard(first);
 
             Platform.runLater(() -> {
                 board.move(s.getStart().getX(), s.getStart().getY(), s.getEnd().getX(), s.getEnd().getY());
@@ -1173,27 +1441,84 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     @Override
     public void thinkDetail(ThinkData td) {
         if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue() || robotAnalysis.getValue()) {
-            td.generate(redGo, isReverse.getValue(), board);
-            if (td.getValid()) {
-                Platform.runLater(() -> {
-                    listView.getItems().addFirst(td);
-                    if (listView.getItems().size() > 128) {
-                        listView.getItems().removeLast();
-                    }
+            int pv = td.getPv() == null ? 1 : td.getPv();
+            // reader 线程只保存最新原始数据。主变翻译和 UI 构建都延后到合并刷新，避免重复计算。
+            pendingAnalysisByPv.put(pv, td);
+            scheduleAnalysisFlush();
+        }
+    }
 
-                    if (prop.isLinkShowInfo()) {
-                        infoShowLabel.setText(td.getTitle() + " | " + td.getBody());
-                        setScoreStyle(infoShowLabel, td.getScore());
-                        timeShowLabel.setText(getTimeStrategyString());
-                    }
-
-                    board.setTip(td.getDetail().get(0), td.getDetail().size() > 1 ? td.getDetail().get(1) : null, td.getPv());
-
-                    if (td.getPv() == 1) {
-                        chessManualHandle.setScore(td.getScore(), td.getMate());
-                    }
-                });
+    private void scheduleAnalysisFlush() {
+        if (!analysisFlushScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        Platform.runLater(() -> {
+            if (analysisFlushDelay == null) {
+                analysisFlushDelay = new PauseTransition(Duration.millis(ANALYSIS_UI_REFRESH_MILLIS));
+                analysisFlushDelay.setOnFinished(event -> flushPendingAnalysis());
             }
+            analysisFlushDelay.playFromStart();
+        });
+    }
+
+    private void flushPendingAnalysis() {
+        Map<Integer, ThinkData> updates = new TreeMap<>(pendingAnalysisByPv);
+        updates.forEach((pv, data) -> pendingAnalysisByPv.remove(pv, data));
+        analysisFlushScheduled.set(false);
+
+        if (updates.isEmpty()) {
+            return;
+        }
+
+        boolean shouldFollowLatest = followLatestAnalysis;
+        ThinkData statusData = null;
+        ThinkData infoData = null;
+        for (Map.Entry<Integer, ThinkData> entry : updates.entrySet()) {
+            int pv = entry.getKey();
+            ThinkData data = entry.getValue();
+            data.generate(redGo, isReverse.getValue(), board.getBoard());
+            if (!data.getValid()) {
+                continue;
+            }
+
+            latestAnalysisByPv.put(pv, data);
+            analysisHistory.add(0, data);
+            infoData = data;
+
+            if (data.getDetail() != null && !data.getDetail().isEmpty()) {
+                board.setTip(data.getDetail().get(0), data.getDetail().size() > 1 ? data.getDetail().get(1) : null, pv);
+            }
+            if (pv == 1) {
+                statusData = data;
+            }
+        }
+        while (analysisHistory.size() > 128) {
+            analysisHistory.remove(analysisHistory.size() - 1);
+        }
+
+        refreshAnalysisList();
+        if (analysisScrollBar == null) {
+            bindAnalysisScrollBar();
+        }
+        if (shouldFollowLatest) {
+            followLatestAnalysis = true;
+            listView.scrollTo(0);
+        }
+
+        if (prop.isLinkShowInfo() && infoData != null) {
+            infoShowLabel.setText(infoData.getTitle() + " | " + infoData.getBody());
+            setScoreStyle(infoShowLabel, infoData.getScore());
+            timeShowLabel.setText(getTimeStrategyString());
+        }
+
+        if (statusData != null) {
+            updateAnalysisStatus(statusData);
+            chessManualHandle.setScore(statusData.getScore(), statusData.getMate());
+        }
+
+        // flush 期间若 reader 又写入了新结果，再安排下一帧；始终只有一个定时刷新在途。
+        if (!pendingAnalysisByPv.isEmpty()) {
+            scheduleAnalysisFlush();
         }
     }
 
@@ -1223,6 +1548,12 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
     @Override
     public void showBookResults(List<BookData> list) {
+        if (!Platform.isFxApplicationThread()) {
+            List<BookData> snapshot = List.copyOf(list);
+            Platform.runLater(() -> showBookResults(snapshot));
+            return;
+        }
+
         this.bookTable.getItems().clear();
         for (BookData bd : list) {
             String move = bd.getMove();

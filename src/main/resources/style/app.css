@@ -42,3 +42,118 @@
     /*-fx-background-insets:  0 0 0 0, 0, 1, 2;*/
 
 }
+
+.analysis-list,
+.analysis-list .virtual-flow,
+.analysis-list .virtual-flow .clipped-container {
+    -fx-background-color: transparent;
+}
+
+.analysis-list .list-cell,
+.analysis-list .list-cell:even,
+.analysis-list .list-cell:odd,
+.analysis-list .list-cell:selected {
+    -fx-background-color: transparent;
+    -fx-padding: 4px 6px;
+}
+
+.analysis-card {
+    -fx-spacing: 7px;
+    -fx-padding: 9px 10px;
+    -fx-background-color: #f8fafc;
+    -fx-background-radius: 6px;
+    -fx-border-color: #d9e1e8;
+    -fx-border-radius: 6px;
+    -fx-border-width: 1px;
+    -fx-cursor: hand;
+}
+
+.analysis-card:hover {
+    -fx-background-color: #f1f6fa;
+    -fx-border-color: #aebdca;
+}
+
+.analysis-list .list-cell:selected .analysis-card {
+    -fx-background-color: #edf5fb;
+    -fx-border-color: #6f9fc5;
+}
+
+.analysis-card-header {
+    -fx-alignment: center-left;
+    -fx-spacing: 8px;
+}
+
+.pv-rank {
+    -fx-padding: 2px 6px;
+    -fx-background-color: #e7edf3;
+    -fx-background-radius: 4px;
+    -fx-text-fill: #536576;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+.pv-rank.pv-best {
+    -fx-background-color: #dcefe2;
+    -fx-text-fill: #27633a;
+}
+
+.pv-first-move {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1f2c38;
+}
+
+.pv-depth {
+    -fx-font-size: 11px;
+    -fx-text-fill: #7a8792;
+}
+
+.pv-evaluation {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.red-evaluation,
+.red-move {
+    -fx-text-fill: #b4232f;
+}
+
+.black-evaluation,
+.black-move {
+    -fx-text-fill: #315c82;
+}
+
+.balanced-evaluation {
+    -fx-text-fill: #596773;
+}
+
+.pv-variation {
+    -fx-alignment: center-left;
+}
+
+.move-number,
+.pv-more {
+    -fx-text-fill: #8a959f;
+    -fx-font-size: 11px;
+}
+
+.red-move,
+.black-move {
+    -fx-font-size: 13px;
+}
+
+.red-move {
+    -fx-font-weight: bold;
+}
+
+.analysis-status-bar {
+    -fx-padding: 5px 8px;
+    -fx-background-color: #f3f6f8;
+    -fx-border-color: #d9e1e8 transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+.analysis-status-bar .label {
+    -fx-font-size: 11px;
+    -fx-text-fill: #5e6c78;
+}

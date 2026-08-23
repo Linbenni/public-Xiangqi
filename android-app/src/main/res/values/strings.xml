@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TCHESS</string>
+
+    <!-- 对局状态 -->
+    <string name="status_red_turn">轮到红方</string>
+    <string name="status_black_turn">轮到黑方</string>
+    <string name="status_thinking">引擎思考中…</string>
+    <string name="status_engine_missing">未找到内置引擎（libpikafish.so），仅可双人对弈</string>
+
+    <!-- 对局按钮 -->
+    <string name="btn_new_game">新局</string>
+    <string name="btn_undo">悔棋</string>
+    <string name="btn_resign">认输</string>
+
+    <!-- 新局对话框 -->
+    <string name="new_game_title">新局设置</string>
+    <string name="side_human_red">玩家执红（先行）</string>
+    <string name="side_human_black">玩家执黑（后行）</string>
+    <string name="side_two_players">双人对弈</string>
+    <string name="difficulty_label">引擎棋力</string>
+    <string name="difficulty_fast">快棋（1 秒）</string>
+    <string name="difficulty_normal">均衡（3 秒）</string>
+    <string name="difficulty_strong">深思（8 秒）</string>
+    <string name="btn_start">开始对局</string>
+    <string name="btn_cancel">取消</string>
+
+    <!-- 结果 -->
+    <string name="result_red_win">红方胜</string>
+    <string name="result_black_win">黑方胜</string>
+    <string name="result_you_win">恭喜，你赢了！</string>
+    <string name="result_you_lose">你输了，再接再厉！</string>
+    <string name="result_draw">和棋</string>
+    <string name="result_mate">绝杀</string>
+    <string name="result_stalemate">困毙（无子可动）</string>
+    <string name="result_resign">认输</string>
+    <string name="btn_again">再来一局</string>
+
+    <!-- 引擎服务通知 -->
+    <string name="engine_service_channel">引擎服务</string>
+    <string name="engine_service_notify_title">TCHESS 对局进行中</string>
+    <string name="engine_service_notify_text">正在保持引擎运行，点击返回对局</string>
+</resources>

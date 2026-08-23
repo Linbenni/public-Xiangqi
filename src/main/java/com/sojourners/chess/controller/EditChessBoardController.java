@@ -3,6 +3,7 @@ package com.sojourners.chess.controller;
 import com.sojourners.chess.App;
 import com.sojourners.chess.board.BaseBoardRender;
 import com.sojourners.chess.board.ChessBoard;
+import com.sojourners.chess.board.BoardPoint;
 import com.sojourners.chess.board.CustomBoardRender;
 import com.sojourners.chess.board.DefaultBoardRender;
 import com.sojourners.chess.config.Properties;
@@ -28,8 +29,8 @@ public class EditChessBoardController {
     private BaseBoardRender boardRender;
     private BaseBoardRender demoBoardRender;
 
-    private ChessBoard.Point remark;
-    private ChessBoard.Point demoRemark;
+    private BoardPoint remark;
+    private BoardPoint demoRemark;
 
     @FXML
     private RadioButton blackFirstButton;
@@ -67,7 +68,7 @@ public class EditChessBoardController {
                     board[i][j] = demoBoard[demoRemark.getY()][demoRemark.getX()];
                 }
             } else {
-                remark = new ChessBoard.Point(j, i);
+                remark = new BoardPoint(j, i);
                 demoRemark = null;
             }
         } else if (event.getButton() == MouseButton.SECONDARY) {
@@ -94,7 +95,7 @@ public class EditChessBoardController {
             return;
         }
 
-        demoRemark = new ChessBoard.Point(j, i);
+        demoRemark = new BoardPoint(j, i);
         remark = null;
 
         paint();

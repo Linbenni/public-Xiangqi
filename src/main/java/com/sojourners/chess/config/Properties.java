@@ -11,7 +11,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Properties implements Serializable {
+public class Properties implements Serializable, AppConfig {
 
     private static final long serialVersionUID = -1410031608529065857L;
 
@@ -45,6 +45,11 @@ public class Properties implements Serializable {
     private Engine.AnalysisModel analysisModel;
 
     private long analysisValue;
+
+    /**
+     * 全局多主变搜索数量。使用包装类型兼容缺少该字段的旧版序列化配置。
+     */
+    private Integer engineMultiPV;
 
     private double stageWidth;
 
@@ -418,6 +423,14 @@ public class Properties implements Serializable {
 
     public void setAnalysisValue(long analysisValue) {
         this.analysisValue = analysisValue;
+    }
+
+    public int getEngineMultiPV() {
+        return engineMultiPV == null ? 1 : Math.max(1, engineMultiPV);
+    }
+
+    public void setEngineMultiPV(int engineMultiPV) {
+        this.engineMultiPV = Math.max(1, engineMultiPV);
     }
 
     public String getEngineName() {

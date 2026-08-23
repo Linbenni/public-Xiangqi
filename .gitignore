@@ -9,3 +9,11 @@ android-app/local.properties
 output/
 *.iml
 .idea/
+.kotlin/
+
+# Pikafish 引擎二进制与 NNUE 权重不入库（体积大）：
+# 克隆后运行 scripts/fetch-engine.ps1（Windows）/ scripts/fetch-engine.sh（Linux/macOS）
+# 或 scripts/build-pikafish.sh（NDK 自编）恢复到本地
+/engine/
+android-app/src/main/assets/pikafish.nnue
+android-app/src/main/jniLibs/*/libpikafish.so

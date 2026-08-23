@@ -18,8 +18,8 @@ android {
         minSdk = 24
         targetSdk = 36
         // 版本号与桌面 App.VERSION 对齐（ANDROID_PLAN.md §6b）
-        versionCode = 2
-        versionName = "1.9-m2"
+        versionCode = 3
+        versionName = "1.9-m3"
     }
 
     buildTypes {
@@ -60,6 +60,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.core:core-ktx:1.15.0")

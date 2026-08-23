@@ -29,6 +29,11 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
+      # 引擎二进制/NNUE 不入库，CI 从官方 release 拉取后打包
+      - name: Fetch Pikafish engine (arm64 + NNUE)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full
+          ./scripts/fetch-engine.sh
       # GitHub runner 预装 Android SDK；compileSdk 缺失时 AGP 会按已接受许可自动补齐
       - name: Build android debug APK
         run: ./gradlew :android-app:assembleDebug

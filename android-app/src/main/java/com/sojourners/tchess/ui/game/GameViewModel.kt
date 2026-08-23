@@ -7,10 +7,11 @@ import androidx.lifecycle.AndroidViewModel
 import com.sojourners.chess.board.BoardPoint
 import com.sojourners.chess.board.MoveStep
 import com.sojourners.chess.enginee.Engine
-import com.sojourners.chess.enginee.EngineCallBack
 import com.sojourners.chess.model.BookData
 import com.sojourners.chess.model.ThinkData
-import com.sojourners.tchess.engine.PikafishProvider
+import com.sojourners.tchess.TchessApp
+import com.sojourners.tchess.engine.EngineConsumer
+import com.sojourners.tchess.engine.EngineSession
 import com.sojourners.tchess.game.Difficulty
 import com.sojourners.tchess.game.GameLogic
 import com.sojourners.tchess.game.GameMode
@@ -20,6 +21,7 @@ import com.sojourners.tchess.game.MoveOutcome
 import com.sojourners.tchess.game.PendingAnim
 import com.sojourners.tchess.game.SoundCue
 import com.sojourners.tchess.sound.SoundManager
+import com.sojourners.tchess.ui.analysis.AnalysisHandoff
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,10 +51,11 @@ data class UiState(
 )
 
 /**
- * M2 对弈闭环：选子/合法着法提示/走子动画、先后手选择、人机双方、
- * 悔棋、新局、认输、胜负判定；引擎经 core Engine 对接；状态落盘支持进程被杀后恢复。
+ * M2 对弈闭环 + M3 共享引擎：选子/合法着法提示/走子动画、先后手选择、人机双方、
+ * 悔棋、新局、认输、胜负判定；引擎经 EngineSession（对弈/分析共用同一进程）对接；
+ * 状态落盘支持进程被杀后恢复。
  */
-class GameViewModel(app: Application) : AndroidViewModel(app) {
+class GameViewModel(app: Application) : AndroidViewModel(app), EngineConsumer {
 
     companion object {
         private const val STATE_FILE = "tchess_game.json"
@@ -61,32 +64,35 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     val logic = GameLogic()
     val sound = SoundManager(app)
 
-    private val pikafish = PikafishProvider(app)
+    private val appCtx = app as TchessApp
+    private val session: EngineSession = appCtx.engineSession
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
     private val stateFile = File(app.filesDir, STATE_FILE)
 
-    private var engine: Engine? = null
     private var animId = 0L
 
     /** 动画结束时播放的音效（走子瞬间不响，落定才响，接近实体棋感） */
     private var pendingCue: SoundCue? = null
 
-    private val _ui = MutableStateFlow(UiState(engineMissing = !pikafish.isAvailable()))
+    /** 因切到分析页等暂停了引擎思考；回到对弈页时续算 */
+    private var suspended = false
+
+    private val _ui = MutableStateFlow(UiState(engineMissing = !session.isAvailable))
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
-    private val engineCallback = object : EngineCallBack {
-        override fun bestMove(first: String?, second: String?) {
-            main.post { onEngineBestMove(first) }
-        }
+    // ---------------------------------------------------------------- 引擎回调（reader 线程）
 
-        override fun thinkDetail(td: ThinkData?) {
-            // M3 分析功能接入
-        }
+    override fun onBestMove(first: String?, second: String?) {
+        main.post { onEngineBestMove(first) }
+    }
 
-        override fun showBookResults(list: MutableList<BookData>?) {
-            // M4 开局库接入
-        }
+    override fun onThinkDetail(td: ThinkData) {
+        // 对弈中不展示思考面板（M3 分析页负责）；保留挂载点
+    }
+
+    override fun onBookResults(list: MutableList<BookData>?) {
+        // M4 开局库接入
     }
 
     init {
@@ -97,6 +103,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     fun newGame(mode: GameMode, difficulty: Difficulty) {
         stopEngineSearch()
+        suspended = false
         logic.reset()
         pendingCue = null
         _ui.value = UiState(
@@ -198,19 +205,18 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     // ---------------------------------------------------------------- 引擎对接
 
     private fun ensureEngine(): Engine? {
-        engine?.let { return it }
-        val e = pikafish.create(engineCallback)
-        if (e == null) {
+        val e = session.acquire() ?: run {
             _ui.update { it.copy(engineMissing = true) }
             return null
         }
-        engine = e
         return e
     }
 
     private fun requestEngineMove() {
         val e = ensureEngine() ?: return
         _ui.update { it.copy(thinking = true) }
+        // 与桌面 configureEngineForSearch 同序：参数 → 搜索策略 → go
+        session.applySettings(appCtx.configStore.snapshotSettings())
         e.setAnalysisModel(Engine.AnalysisModel.FIXED_TIME, _ui.value.difficulty.moveTimeMillis)
         e.analysis(logic.currentFen(), logic.moves, logic.snapshotBoard(), logic.redToGo, false)
     }
@@ -231,7 +237,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun stopEngineSearch() {
-        engine?.stop()
+        session.stopSearch()
         _ui.update { it.copy(thinking = false) }
     }
 
@@ -300,6 +306,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     private fun engineToMoveNow(): Boolean {
         val s = _ui.value
         if (!s.started || s.gameOver != null || s.mode?.vsEngine != true) return false
+        if (s.engineMissing || !appCtx.configStore.snapshotSettings().engineEnabled) return false
         return logic.redToGo == enginePlaysRed(s.mode)
     }
 
@@ -319,6 +326,36 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         val s = _ui.value
         return s.started && s.gameOver == null
     }
+
+    // ---------------------------------------------------------------- 页面切换（M3 底部导航）
+
+    /** 离开对弈页：停掉思考中的搜索（分析页要独占引擎），回页后自动续算 */
+    fun onScreenHidden() {
+        if (_ui.value.thinking) {
+            session.stopSearch()
+            _ui.update { it.copy(thinking = false) }
+            suspended = true
+        }
+        session.unbind(this)
+    }
+
+    fun onScreenShown() {
+        session.bind(this)
+        _ui.update { it.copy(engineMissing = session.engineMissing) }
+        if (suspended && engineToMoveNow()) {
+            requestEngineMove()
+        }
+        suspended = false
+    }
+
+    // ---------------------------------------------------------------- 导出局面（→ 分析页）
+
+    fun exportForAnalysis(): AnalysisHandoff.PositionSnapshot =
+        AnalysisHandoff.PositionSnapshot(
+            fen = logic.currentFen(),
+            moves = ArrayList(logic.moves),
+            redToGo = logic.redToGo,
+        )
 
     // ---------------------------------------------------------------- 持久化恢复
 
@@ -385,8 +422,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
-        engine?.close()
-        engine = null
+        session.unbind(this)
         io.shutdown()
         sound.release()
         super.onCleared()

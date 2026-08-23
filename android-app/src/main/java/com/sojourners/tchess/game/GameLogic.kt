@@ -40,6 +40,17 @@ class GameLogic {
         moveTexts.clear()
     }
 
+    /**
+     * 直接装载一个局面（分析模式 FEN 载入用）：替换棋盘与行棋方，清空着法历史。
+     * 调用方负责先校验（XiangqiUtils.validateChessBoard）。
+     */
+    fun loadPosition(source: Array<CharArray>, redToGo: Boolean) {
+        for (row in 0..9) System.arraycopy(source[row], 0, board[row], 0, 9)
+        this.redToGo = redToGo
+        moves.clear()
+        moveTexts.clear()
+    }
+
     fun pieceAt(col: Int, row: Int): Char = board[row][col]
 
     fun snapshotBoard(): Array<CharArray> = Array(10) { r -> board[r].clone() }

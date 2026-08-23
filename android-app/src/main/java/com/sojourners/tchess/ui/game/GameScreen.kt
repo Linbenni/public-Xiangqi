@@ -46,10 +46,11 @@ import com.sojourners.tchess.ui.board.drawXiangqiBoard
 import com.sojourners.tchess.ui.board.rememberBoardAssets
 
 /**
- * M2 主界面：顶部操作栏 + Canvas 棋盘 + 状态栏；新局/终局对话框。
+ * M2 主界面 + M3 入口：顶部操作栏 + Canvas 棋盘 + 状态栏；新局/终局对话框。
+ * 「分析」把当前局面交给分析页（AnalysisHandoff）。
  */
 @Composable
-fun GameScreen(vm: GameViewModel) {
+fun GameScreen(vm: GameViewModel, onOpenAnalysis: (() -> Unit)? = null) {
     val ui by vm.ui.collectAsState()
     var showNewGameDialog by remember { mutableStateOf(false) }
 
@@ -62,35 +63,31 @@ fun GameScreen(vm: GameViewModel) {
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // 顶部操作栏
+        // 顶部操作栏（四按钮等距排布；应用名见系统启动器，避免窄屏溢出）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "TCHESS",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Row {
-                OutlinedButton(onClick = { showNewGameDialog = true }, enabled = ui.anim == null) {
-                    Text("新局")
-                }
-                Spacer(Modifier.width(8.dp))
-                OutlinedButton(
-                    onClick = { vm.undo() },
-                    enabled = ui.started && ui.gameOver == null && vm.logic.moves.isNotEmpty() && ui.anim == null,
-                ) {
-                    Text("悔棋")
-                }
-                Spacer(Modifier.width(8.dp))
-                OutlinedButton(
-                    onClick = { vm.resign() },
-                    enabled = ui.started && ui.gameOver == null,
-                ) {
-                    Text("认输")
+            OutlinedButton(onClick = { showNewGameDialog = true }, enabled = ui.anim == null) {
+                Text("新局")
+            }
+            OutlinedButton(onClick = { vm.undo() },
+                enabled = ui.started && ui.gameOver == null && vm.logic.moves.isNotEmpty() && ui.anim == null,
+            ) {
+                Text("悔棋")
+            }
+            OutlinedButton(
+                onClick = { vm.resign() },
+                enabled = ui.started && ui.gameOver == null,
+            ) {
+                Text("认输")
+            }
+            if (onOpenAnalysis != null) {
+                OutlinedButton(onClick = onOpenAnalysis) {
+                    Text("分析")
                 }
             }
         }

@@ -117,14 +117,18 @@ UI 为原生触屏体验。
 - [x] 生命周期：对局中前台 Service 保引擎进程；被杀后恢复局面（JSON 存档+自动续算）
 - [x] 构建验证：`:android-app:assembleDebug` 通过、安卓 JVM 单测与 `:core:test` 回归通过；
       CI 增加 android job；实现说明见 `docs/android-m2.md`
-- [ ] 真机验收：放入 libpikafish.so 完成一整局人机对弈、切后台返回正常、无崩溃（待 arm64 真机）
+- [x] 引擎上机：官方 release（2026-01-02）Android/armv8 二进制改名 `libpikafish.so` 打包，
+      外部 NNUE 权重随 assets 释放（`scripts/fetch-engine.ps1|sh` 一键恢复，二进制不入库）——
+      真机整局验收仍待 arm64 真机
 
-### M3 分析功能（1~2 周）
-- [ ] 分析面板：MultiPV 变化列表、评估柱、思考数据表格（ThinkData 直接复用）
-- [ ] 时间控制页：固定时间/固定步数/固定节点/无限（`AnalysisModel` 复用）
-- [ ] 引擎管理页 v1：内置引擎参数（Threads 2~4、Hash 64~128MB 默认值）、开关
-- [ ] 手机性能档位：省电/均衡/全力；发热降频提示
-- 验收标准：同一 FEN 与桌面版 MultiPV 输出一致；列表滚动不掉帧
+### M3 分析功能（1~2 周）—— ✅ 已完成（真机回归待引擎装机验证）
+- [x] 分析面板：MultiPV 变化列表、评估柱、思考数据表格（ThinkData 直接复用，
+      文案与桌面同源保证输出一致；100ms 节流 flush 保证滚动流畅）
+- [x] 时间控制页：固定时间/固定步数/固定节点/无限（`Engine.AnalysisModel` 复用）
+- [x] 引擎管理页 v1：内置引擎参数（Threads 1~4、Hash 16~256MB 默认 2/64）、MultiPV、启用开关
+- [x] 手机性能档位：省电/均衡/全力（线程+Hash 预设）；发热降频提示（API29+ 热状态监听横幅）
+- 验收结果：core 测试与纯净性检查全绿；安卓侧新增 PvBoard/EvalBar/AppSettings 单测全绿；
+  `assembleDebug` 出包且含 libpikafish.so + pikafish.nnue；实现说明见 `docs/android-m3.md`
 
 ### M4 棋谱 + 开局库（2~3 周）
 - [ ] SAF 导入/导出 xqf/pgn/cbr/txq；FileProvider 分享

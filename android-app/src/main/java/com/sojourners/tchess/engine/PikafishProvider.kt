@@ -8,8 +8,8 @@ import java.io.File
 /**
  * 内置 Pikafish 的定位与装配。
  * - 引擎二进制：jniLibs/libpikafish.so → nativeLibraryDir（安装时系统解压，可执行）
- * - NNUE 权重：可选 assets/pikafish.nnue，首次启动释放到 filesDir 并以 EvalFile 传入。
- *   （新版官方引擎已内置 NNUE；无该资产时跳过。）
+ * - NNUE 权重：官方引擎需要外部权重（EvalFile），assets/pikafish.nnue 首次启动释放到
+ *   filesDir 并注入；缺权重时引擎无法正常评估（脚本 fetch-engine 一并放置）。
  */
 class PikafishProvider(private val context: Context) {
 

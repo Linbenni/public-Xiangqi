@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -26,45 +26,53 @@ jobs:
       - name: Build with Maven
         run: mvn -B -DskipTests package
 
-      - name: Upload Maven jar
+      - name: Upload compiled application jar
         uses: actions/upload-artifact@v4
         with:
-          name: Xiangqi-jar
-          path: target/*.jar
+          name: Xiangqi-app-jar
+          path: target/app.jar
           if-no-files-found: error
 
-      - name: Build Windows portable application
+      - name: Build original-style Windows portable application
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path target\package-input | Out-Null
-          Copy-Item target\Xiangqi-1.0-SNAPSHOT.jar target\package-input
-          Copy-Item target\dependency\*.jar target\package-input
-          & "$env:JAVA_HOME\bin\jpackage.exe" `
-            --type app-image `
-            --dest target `
-            --name Xiangqi `
-            --input target\package-input `
-            --main-jar Xiangqi-1.0-SNAPSHOT.jar `
-            --main-class com.sojourners.chess.Main `
-            --runtime-image "$env:JAVA_HOME"
+          $archive = "target\tchess_V1.9_windows_x64.7z"
+          $sourceUrl = "https://github.com/sojourners/public-Xiangqi/releases/download/V1.9/tchess_V1.9_windows_x64.7z"
+          Invoke-WebRequest -Uri $sourceUrl -OutFile $archive
+
+          $expectedHash = "CEF1FDBE141853561E7DC5DCE62FB4FEE1B7026F6AE399BE7FBD5E2F3AF06441"
+          $actualHash = (Get-FileHash -Algorithm SHA256 $archive).Hash
+          if ($actualHash -ne $expectedHash) {
+            throw "The upstream V1.9 package checksum does not match."
+          }
+
+          New-Item -ItemType Directory -Path target\upstream | Out-Null
+          tar -xf $archive -C target\upstream
+
+          $package = "target\tchess_V1.9.1_xqf_drag_drop"
+          Copy-Item target\upstream\tchess_V1.9 $package -Recurse
+          Copy-Item target\app.jar "$package\app.jar" -Force
+          Copy-Item src\main\resources\model $package -Recurse -Force
+          Copy-Item src\main\resources\sound $package -Recurse -Force
+          Copy-Item src\main\resources\ui $package -Recurse -Force
 
       - name: Upload Windows portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Xiangqi-windows-x64
-          path: target/Xiangqi/**
+          name: tchess_V1.9.1_windows_x64
+          path: target/tchess_V1.9.1_xqf_drag_drop/**
           if-no-files-found: error
 
       - name: Create portable archive
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
-        run: Compress-Archive -Path target/Xiangqi/* -DestinationPath target/Xiangqi-windows-x64.zip
+        run: Compress-Archive -Path target/tchess_V1.9.1_xqf_drag_drop/* -DestinationPath target/tchess_V1.9.1_windows_x64.zip
 
       - name: Publish Windows release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           body: |
-            Windows portable version with XQF drag-and-drop loading.
-            Extract the ZIP archive, then run Xiangqi.exe.
-          files: target/Xiangqi-windows-x64.zip
+            Windows 便携版，增加 XQF 棋谱拖放加载功能。
+            解压全部文件后，双击 tchess.exe 运行；ui 目录可继续替换棋盘界面。
+          files: target/tchess_V1.9.1_windows_x64.zip

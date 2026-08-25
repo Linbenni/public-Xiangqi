@@ -30,15 +30,21 @@ jobs:
           path: target/*.jar
           if-no-files-found: error
 
-      - name: Build JavaFX runtime image
-        id: jlink
-        continue-on-error: true
-        run: mvn -B -DskipTests javafx:jlink
+      - name: Build Windows portable application
+        shell: pwsh
+        run: |
+          & "$env:JAVA_HOME\bin\jpackage.exe" `
+            --type app-image `
+            --dest target `
+            --name Xiangqi `
+            --module-path "target\Xiangqi-1.0-SNAPSHOT.jar;target\dependency" `
+            --module "Xiangqi/com.sojourners.chess.Main" `
+            --runtime-image "$env:JAVA_HOME" `
+            --win-console false
 
-      - name: Upload Windows runtime image
-        if: steps.jlink.outcome == 'success'
+      - name: Upload Windows portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Xiangqi-windows-runtime
+          name: Xiangqi-windows-x64
           path: target/Xiangqi/**
           if-no-files-found: error

@@ -22,3 +22,18 @@ jobs:
 
       - name: Build with Maven
         run: mvn -B -DskipTests package
+
+      - name: Build JavaFX runtime image
+        run: mvn -B -DskipTests javafx:jlink
+
+      - name: Upload Maven jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xiangqi-jar
+          path: target/*.jar
+
+      - name: Upload Windows runtime image
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xiangqi-windows-runtime
+          path: target/Xiangqi/**

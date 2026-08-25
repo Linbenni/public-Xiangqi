@@ -613,6 +613,14 @@ public class ChessManualHandle {
         }
     }
 
+    public boolean openChessManualFile(File file) {
+        if (file == null || !isManualFile(file)) {
+            return false;
+        }
+        openFromFile(file);
+        return true;
+    }
+
     private void openFromFile(File file) {
         String ext = PathUtils.getDotExtension(file).toLowerCase();
         ChessManual cm = manualServices.get(ext).openChessManual(file);

@@ -26,6 +26,22 @@ jobs:
       - name: Build with Maven
         run: mvn -B -DskipTests package
 
+      - name: Set up Visual C++
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build Windows launcher
+        shell: pwsh
+        run: |
+          Push-Location .github\launcher
+          rc /nologo /fo ..\..\target\tchess.res tchess.rc
+          $resourceCompilerExitCode = $LASTEXITCODE
+          Pop-Location
+          if ($resourceCompilerExitCode -ne 0) { throw "Resource compiler failed." }
+          cl /nologo /O2 /W4 /utf-8 /DUNICODE /D_UNICODE /Fo:target\tchess.obj .github\launcher\tchess.c target\tchess.res /link /SUBSYSTEM:WINDOWS /OUT:target\tchess.exe
+          if ($LASTEXITCODE -ne 0) { throw "C compiler failed." }
+
       - name: Upload compiled application jar
         uses: actions/upload-artifact@v4
         with:
@@ -55,7 +71,7 @@ jobs:
           Copy-Item src\main\resources\model $package -Recurse -Force
           Copy-Item src\main\resources\sound $package -Recurse -Force
           Copy-Item src\main\resources\ui $package -Recurse -Force
-          .\.github\scripts\set-launcher-manifest.ps1 -ExePath "$package\tchess.exe"
+          Copy-Item target\tchess.exe "$package\tchess.exe" -Force
 
       - name: Upload Windows portable application
         uses: actions/upload-artifact@v4

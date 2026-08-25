@@ -37,6 +37,7 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.image.WritableImage;
+import javafx.scene.input.DragEvent;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
@@ -700,8 +701,6 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         initButtonListener();
         // autofit board size listener
         initAutoFitBoardListener();
-        // canvas drag listener
-        initCanvasDragListener();
         // line chart
         initLineChart();
         // init chess manual
@@ -711,6 +710,8 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
                 manualForwardButton, manualFrontButton, manualPlayButton, manualUpButton,
                 openManualButton, saveManualButton, manualScoreButton, competitionNameText, competitionCityText, competitionDateText,
                 competitionRedText, competitionBlackText, this);
+        // File drag listener must be initialized after chessManualHandle.
+        initMainWindowFileDragListener();
 
         useOpenBook.setValue(prop.getBookSwitch());
         // 初始化棋局
@@ -746,15 +747,25 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         return f != null && f.isFile() && "xqf".equalsIgnoreCase(PathUtils.getDotExtension(f));
     }
 
-    private void initCanvasDragListener() {
-        this.canvas.setOnDragDropped(event -> {
+    private File getSupportedDroppedFile(Dragboard dragboard) {
+        if (!dragboard.hasFiles()) {
+            return null;
+        }
+        return dragboard.getFiles().stream()
+                .filter(file -> isXqfFile(file) || PathUtils.isImage(file.getAbsolutePath()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void initMainWindowFileDragListener() {
+        this.borderPane.addEventFilter(DragEvent.DRAG_DROPPED, event -> {
             Dragboard dragboard = event.getDragboard();
             boolean success = false;
-            if (dragboard.hasFiles() && !dragboard.getFiles().isEmpty()) {
-                File f = dragboard.getFiles().get(0);
+            File f = getSupportedDroppedFile(dragboard);
+            if (f != null) {
                 if (isXqfFile(f)) {
                     success = chessManualHandle.openChessManualFile(f);
-                } else if (PathUtils.isImage(f.getAbsolutePath())) {
+                } else {
                     importFromImgFile(f);
                     success = true;
                 }
@@ -762,15 +773,11 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
             event.setDropCompleted(success);
             event.consume();
         });
-        this.canvas.setOnDragOver(event -> {
-            Dragboard dragboard = event.getDragboard();
-            if (dragboard.hasFiles() && !dragboard.getFiles().isEmpty()) {
-                File f = dragboard.getFiles().get(0);
-                if (isXqfFile(f) || PathUtils.isImage(f.getAbsolutePath())) {
-                    event.acceptTransferModes(TransferMode.COPY);
-                }
+        this.borderPane.addEventFilter(DragEvent.DRAG_OVER, event -> {
+            if (getSupportedDroppedFile(event.getDragboard()) != null) {
+                event.acceptTransferModes(TransferMode.COPY);
+                event.consume();
             }
-            event.consume();
         });
     }
 

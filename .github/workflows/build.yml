@@ -55,6 +55,7 @@ jobs:
           Copy-Item src\main\resources\model $package -Recurse -Force
           Copy-Item src\main\resources\sound $package -Recurse -Force
           Copy-Item src\main\resources\ui $package -Recurse -Force
+          .\.github\scripts\set-launcher-manifest.ps1 -ExePath "$package\tchess.exe"
 
       - name: Upload Windows portable application
         uses: actions/upload-artifact@v4
@@ -73,6 +74,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body: |
-            Windows 便携版，增加 XQF 棋谱拖放加载功能。
+            Windows 便携版，增加 XQF 棋谱拖放加载功能，整个主窗口均可接收拖放。
             解压全部文件后，双击 tchess.exe 运行；ui 目录可继续替换棋盘界面。
           files: target/tchess_V1.9.1_windows_x64.zip

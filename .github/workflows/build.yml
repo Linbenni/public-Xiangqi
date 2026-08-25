@@ -39,8 +39,7 @@ jobs:
             --name Xiangqi `
             --module-path "target\Xiangqi-1.0-SNAPSHOT.jar;target\dependency" `
             --module "Xiangqi/com.sojourners.chess.Main" `
-            --runtime-image "$env:JAVA_HOME" `
-            --win-console false
+            --runtime-image "$env:JAVA_HOME"
 
       - name: Upload Windows portable application
         uses: actions/upload-artifact@v4

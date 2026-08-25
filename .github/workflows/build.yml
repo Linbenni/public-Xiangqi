@@ -39,7 +39,7 @@ jobs:
           $resourceCompilerExitCode = $LASTEXITCODE
           Pop-Location
           if ($resourceCompilerExitCode -ne 0) { throw "Resource compiler failed." }
-          cl /nologo /O2 /W4 /utf-8 /DUNICODE /D_UNICODE /Fo:target\tchess.obj .github\launcher\tchess.c target\tchess.res /link /SUBSYSTEM:WINDOWS /OUT:target\tchess.exe
+          cl /nologo /O2 /W4 /utf-8 /DUNICODE /D_UNICODE /Fo:target\tchess.obj .github\launcher\tchess.c target\tchess.res user32.lib /link /SUBSYSTEM:WINDOWS /OUT:target\tchess.exe
           if ($LASTEXITCODE -ne 0) { throw "C compiler failed." }
 
       - name: Upload compiled application jar

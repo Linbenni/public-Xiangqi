@@ -33,12 +33,16 @@ jobs:
       - name: Build Windows portable application
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Path target\package-input | Out-Null
+          Copy-Item target\Xiangqi-1.0-SNAPSHOT.jar target\package-input
+          Copy-Item target\dependency\*.jar target\package-input
           & "$env:JAVA_HOME\bin\jpackage.exe" `
             --type app-image `
             --dest target `
             --name Xiangqi `
-            --module-path "target\Xiangqi-1.0-SNAPSHOT.jar;target\dependency" `
-            --module "Xiangqi/com.sojourners.chess.Main" `
+            --input target\package-input `
+            --main-jar Xiangqi-1.0-SNAPSHOT.jar `
+            --main-class com.sojourners.chess.Main `
             --runtime-image "$env:JAVA_HOME"
 
       - name: Upload Windows portable application

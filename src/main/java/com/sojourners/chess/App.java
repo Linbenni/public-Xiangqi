@@ -25,8 +25,8 @@ import java.net.URL;
  */
 public class App extends Application {
 
-    public static final String VERSION = "1.9";
-    public static final String BUILT_ON = "20260801";
+    public static final String VERSION = "1.9.2";
+    public static final String BUILT_ON = "20260826";
 
     private static Stage engineAdd;
     private static Stage engineSetting;

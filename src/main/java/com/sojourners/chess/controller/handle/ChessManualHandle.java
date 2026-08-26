@@ -142,13 +142,13 @@ public class ChessManualHandle {
 
     private void initButton() {
         manualDownButton.setTooltip(new Tooltip("下变"));
-        manualFrontButton.setTooltip(new Tooltip("开局"));
-        manualPlayButton.setTooltip(new Tooltip("播放棋谱"));
+        manualFrontButton.setTooltip(new Tooltip("开局 (Ctrl+Up)"));
+        manualPlayButton.setTooltip(new Tooltip("播放棋谱 (Ctrl+P)"));
         manualUpButton.setTooltip(new Tooltip("上变"));
         manualDeleteButton.setTooltip(new Tooltip("删除棋谱"));
-        manualForwardButton.setTooltip(new Tooltip("前进"));
-        manualBackButton.setTooltip(new Tooltip("后退"));
-        manualFinalButton.setTooltip(new Tooltip("终局"));
+        manualForwardButton.setTooltip(new Tooltip("前进 (Ctrl+Right)"));
+        manualBackButton.setTooltip(new Tooltip("后退 (Ctrl+Left)"));
+        manualFinalButton.setTooltip(new Tooltip("终局 (Ctrl+Down)"));
         openManualButton.setTooltip(new Tooltip("打开棋谱"));
         saveManualButton.setTooltip(new Tooltip("保存棋谱"));
         manualScoreButton.setTooltip(new Tooltip("棋谱打分"));

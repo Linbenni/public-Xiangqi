@@ -39,6 +39,9 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.image.WritableImage;
 import javafx.scene.input.DragEvent;
 import javafx.scene.input.Dragboard;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.TransferMode;
@@ -817,20 +820,33 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         borderPane.setPrefHeight(prop.getStageHeight());
         splitPane.setDividerPosition(0, prop.getSplitPos());
         splitPane2.setDividerPosition(0, prop.getSplitPos2());
+        initKeyboardShortcuts();
 
         // 窗口置顶
         menuOfTopWindow.setSelected(prop.isTopWindow());
         App.topWindow(prop.isTopWindow());
     }
 
+    private void initKeyboardShortcuts() {
+        var accelerators = borderPane.getScene().getAccelerators();
+        accelerators.put(new KeyCodeCombination(KeyCode.RIGHT, KeyCombination.CONTROL_DOWN), manualForwardButton::fire);
+        accelerators.put(new KeyCodeCombination(KeyCode.LEFT, KeyCombination.CONTROL_DOWN), manualBackButton::fire);
+        accelerators.put(new KeyCodeCombination(KeyCode.UP, KeyCombination.CONTROL_DOWN), manualFrontButton::fire);
+        accelerators.put(new KeyCodeCombination(KeyCode.DOWN, KeyCombination.CONTROL_DOWN), manualFinalButton::fire);
+        accelerators.put(new KeyCodeCombination(KeyCode.P, KeyCombination.CONTROL_DOWN), manualPlayButton::fire);
+        accelerators.put(new KeyCodeCombination(KeyCode.U, KeyCombination.CONTROL_DOWN), regretButton::fire);
+        accelerators.put(new KeyCodeCombination(KeyCode.R, KeyCombination.CONTROL_DOWN, KeyCombination.ALT_DOWN), redButton::fire);
+        accelerators.put(new KeyCodeCombination(KeyCode.B, KeyCombination.CONTROL_DOWN, KeyCombination.ALT_DOWN), blackButton::fire);
+    }
+
     private void setButtonTips() {
         newButton.setTooltip(new Tooltip("新局面"));
         copyButton.setTooltip(new Tooltip("复制局面"));
         pasteButton.setTooltip(new Tooltip("粘贴局面"));
-        regretButton.setTooltip(new Tooltip("悔棋"));
+        regretButton.setTooltip(new Tooltip("悔棋 (Ctrl+U)"));
         reverseButton.setTooltip(new Tooltip("翻转"));
-        redButton.setTooltip(new Tooltip("引擎执红"));
-        blackButton.setTooltip(new Tooltip("引擎执黑"));
+        redButton.setTooltip(new Tooltip("引擎执红 (Ctrl+Alt+R)"));
+        blackButton.setTooltip(new Tooltip("引擎执黑 (Ctrl+Alt+B)"));
         analysisButton.setTooltip(new Tooltip("分析模式"));
         immediateButton.setTooltip(new Tooltip("立即出招"));
         changeTacticButton.setTooltip(new Tooltip("变招"));

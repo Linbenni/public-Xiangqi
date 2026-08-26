@@ -485,12 +485,31 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         refreshLineChart();
         // 切换行棋方
         redGo = !redGo;
+        if (stopOnThreefoldRepetition()) {
+            return;
+        }
         // 触发引擎走棋
         if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue() || robotAnalysis.getValue()) {
             engineGo();
         } else {
             doOpenBook();
         }
+    }
+
+    private boolean stopOnThreefoldRepetition() {
+        if (!XiangqiUtils.isThreefoldRepetition(chessManualHandle.getFenCode(), chessManualHandle.getMoveList())) {
+            return false;
+        }
+
+        if (linkMode.getValue()) {
+            stopGraphLink();
+        } else {
+            engineStop();
+            robotRed.setValue(false);
+            robotBlack.setValue(false);
+        }
+        DialogUtils.showInfoDialog("对局结束", "检测到同一局面第三次出现，已停止自动走棋，避免循环。");
+        return true;
     }
 
     @Override
@@ -1008,6 +1027,8 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
         // 库招显示
         doOpenBook();
+
+        System.gc();
     }
 
     private void initEngineView() {

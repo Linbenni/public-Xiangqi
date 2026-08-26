@@ -740,6 +740,50 @@ public class XiangqiUtils {
         return board;
     }
 
+    public static boolean isThreefoldRepetition(String fenCode, List<String> moves) {
+        if (StringUtils.isEmpty(fenCode) || moves == null || moves.isEmpty()) {
+            return false;
+        }
+
+        char[][] position = fenToBoard(fenCode);
+        String[] fenParts = fenCode.trim().split("\\s+");
+        boolean redGo = fenParts.length < 2 || !"b".equalsIgnoreCase(fenParts[1]);
+        Map<String, Integer> occurrences = new HashMap<>();
+        occurrences.put(repetitionKey(position, redGo), 1);
+
+        String currentKey = null;
+        for (String move : moves) {
+            if (StringUtils.isEmpty(move) || move.length() != 4) {
+                return false;
+            }
+
+            int fromX = move.charAt(0) - 'a';
+            int fromY = 9 - (move.charAt(1) - '0');
+            int toX = move.charAt(2) - 'a';
+            int toY = 9 - (move.charAt(3) - '0');
+            if (fromX < 0 || fromX >= 9 || toX < 0 || toX >= 9
+                    || fromY < 0 || fromY >= 10 || toY < 0 || toY >= 10) {
+                return false;
+            }
+
+            position[toY][toX] = position[fromY][fromX];
+            position[fromY][fromX] = ' ';
+            redGo = !redGo;
+            currentKey = repetitionKey(position, redGo);
+            occurrences.merge(currentKey, 1, Integer::sum);
+        }
+
+        return currentKey != null && occurrences.get(currentKey) >= 3;
+    }
+
+    private static String repetitionKey(char[][] board, boolean redGo) {
+        StringBuilder key = new StringBuilder(91);
+        for (char[] row : board) {
+            key.append(row);
+        }
+        return key.append(redGo ? 'w' : 'b').toString();
+    }
+
     public static ChessBoard.Step translateCnMove(char[][] board, StringBuilder sb, String move) {
         if (StringUtils.isEmpty(move) || move.length() < 4) {
             sb.append(move);

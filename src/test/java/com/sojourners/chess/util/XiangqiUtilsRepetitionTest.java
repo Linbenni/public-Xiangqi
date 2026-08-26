@@ -1,0 +1,32 @@
+package com.sojourners.chess.util;
+
+import java.util.List;
+
+public class XiangqiUtilsRepetitionTest {
+
+    private static final String START_FEN =
+            "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1";
+
+    public static void main(String[] args) {
+        List<String> oneCycle = List.of("b0c2", "b9c7", "c2b0", "c7b9");
+        List<String> twoCycles = List.of(
+                "b0c2", "b9c7", "c2b0", "c7b9",
+                "b0c2", "b9c7", "c2b0", "c7b9");
+        List<String> brokenCycle = List.of(
+                "b0c2", "b9c7", "c2b0", "c7b9",
+                "b0c2", "b9c7", "c2b0", "g6g5");
+
+        assertResult(false, XiangqiUtils.isThreefoldRepetition(START_FEN, oneCycle),
+                "A second occurrence must not stop the game.");
+        assertResult(true, XiangqiUtils.isThreefoldRepetition(START_FEN, twoCycles),
+                "A third occurrence must stop the game.");
+        assertResult(false, XiangqiUtils.isThreefoldRepetition(START_FEN, brokenCycle),
+                "A different current position must not be treated as repeated.");
+    }
+
+    private static void assertResult(boolean expected, boolean actual, String message) {
+        if (expected != actual) {
+            throw new AssertionError(message + " Expected " + expected + " but got " + actual + ".");
+        }
+    }
+}

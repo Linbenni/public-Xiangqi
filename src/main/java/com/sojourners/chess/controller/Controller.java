@@ -1010,8 +1010,6 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
         // 库招显示
         doOpenBook();
-
-        System.gc();
     }
 
     private void initEngineView() {

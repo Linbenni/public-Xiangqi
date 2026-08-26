@@ -4,8 +4,8 @@
 1 RT_MANIFEST "tchess.manifest"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,9,7,0
- PRODUCTVERSION 1,9,7,0
+ FILEVERSION 1,9,8,0
+ PRODUCTVERSION 1,9,8,0
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x0L
  FILEOS VOS_NT_WINDOWS32
@@ -18,11 +18,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "TCHESS"
             VALUE "FileDescription", "TCHESS Chinese Chess"
-            VALUE "FileVersion", "1.9.7"
+            VALUE "FileVersion", "1.9.8"
             VALUE "InternalName", "tchess"
             VALUE "OriginalFilename", "tchess.exe"
             VALUE "ProductName", "TCHESS"
-            VALUE "ProductVersion", "1.9.7"
+            VALUE "ProductVersion", "1.9.8"
         END
     END
     BLOCK "VarFileInfo"

@@ -15,13 +15,22 @@ public class XiangqiUtilsRepetitionTest {
         List<String> brokenCycle = List.of(
                 "b0c2", "b9c7", "c2b0", "c7b9",
                 "b0c2", "b9c7", "c2b0", "g6g5");
+        List<String> beforeThirdOccurrence = List.of(
+                "b0c2", "b9c7", "c2b0", "c7b9",
+                "b0c2", "b9c7", "c2b0");
 
         assertResult(false, XiangqiUtils.isThreefoldRepetition(START_FEN, oneCycle),
-                "A second occurrence must not stop the game.");
+                "A second occurrence must not be treated as threefold repetition.");
         assertResult(true, XiangqiUtils.isThreefoldRepetition(START_FEN, twoCycles),
-                "A third occurrence must stop the game.");
+                "A third occurrence must be detected.");
         assertResult(false, XiangqiUtils.isThreefoldRepetition(START_FEN, brokenCycle),
                 "A different current position must not be treated as repeated.");
+        assertResult(true, XiangqiUtils.wouldCauseThreefoldRepetition(
+                        START_FEN, beforeThirdOccurrence, "c7b9"),
+                "The move returning to the initial position must be rejected before it is played.");
+        assertResult(false, XiangqiUtils.wouldCauseThreefoldRepetition(
+                        START_FEN, beforeThirdOccurrence, "g6g5"),
+                "A move to a different position must remain available to the engine.");
     }
 
     private static void assertResult(boolean expected, boolean actual, String message) {

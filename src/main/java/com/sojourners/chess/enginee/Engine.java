@@ -12,12 +12,16 @@ import com.sojourners.chess.util.StringUtils;
 import java.io.*;
 import java.security.SecureRandom;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 引擎封装
  */
 public class Engine {
+
+    private static final long READY_TIMEOUT_SECONDS = 10;
 
     private Process process;
 
@@ -51,6 +55,9 @@ public class Engine {
 
     private int multiPV;
 
+    private final CountDownLatch protocolReady = new CountDownLatch(1);
+    private volatile CountDownLatch readySignal;
+
     public enum AnalysisModel {
         FIXED_TIME,
         FIXED_TIME_AND_STEPS,
@@ -81,6 +88,14 @@ public class Engine {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     System.out.println(line);
+                    if ("uciok".equals(line) || "ucciok".equals(line)) {
+                        protocolReady.countDown();
+                    } else if ("readyok".equals(line)) {
+                        CountDownLatch signal = readySignal;
+                        if (signal != null) {
+                            signal.countDown();
+                        }
+                    }
                     if (line.contains("depth") || line.contains("nps")) {
                         thinkDetail(line);
                     } else if (line.contains("bestmove")) {
@@ -94,12 +109,25 @@ public class Engine {
 
         cmd(protocol);
 
+        if (!await(protocolReady)) {
+            close();
+            throw new IOException("Engine did not acknowledge the " + protocol + " protocol.");
+        }
+
         for (Map.Entry<String, String> entry : ec.getOptions().entrySet()) {
+            if (StringUtils.isEmpty(entry.getValue()) || "<empty>".equals(entry.getValue())) {
+                continue;
+            }
             if ("uci".equals(this.protocol)) {
                 cmd("setoption name " + entry.getKey() + " value " + entry.getValue());
             } else if ("ucci".equals(this.protocol)) {
                 cmd("setoption " + entry.getKey() + " " + entry.getValue());
             }
+        }
+
+        if ("uci".equals(this.protocol) && !startNewUciGame()) {
+            close();
+            throw new IOException("Engine did not become ready after initialization.");
         }
     }
 
@@ -134,12 +162,21 @@ public class Engine {
                         if ("uciok".equals(line) || "ucciok".equals(line) ) {
                             f.set(true);
                         }
-                        if (line.startsWith("option") && line.contains("name") && line.contains("type") && line.contains("default")
+                        if (line.startsWith("option") && line.contains(" name ") && line.contains(" type ") && line.contains(" default")
                                 && !line.contains("Threads") && !line.contains("Hash")) {
 
-                            String[] str = line.split("name|type|default");
-                            String key = str[1].trim();
-                            String value = str[3].trim().split(" ")[0];
+                            int nameIndex = line.indexOf(" name ") + 6;
+                            int typeIndex = line.indexOf(" type ", nameIndex);
+                            int defaultIndex = line.indexOf(" default", typeIndex);
+                            String key = line.substring(nameIndex, typeIndex).trim();
+                            String value = line.substring(defaultIndex + 8).trim();
+                            int varIndex = value.indexOf(" var ");
+                            if (varIndex >= 0) {
+                                value = value.substring(0, varIndex).trim();
+                            }
+                            if ("<empty>".equals(value)) {
+                                value = "";
+                            }
                             options.put(key, value);
                         }
                     }
@@ -354,6 +391,33 @@ public class Engine {
 
     public void moveNow() {
         cmd("stop");
+    }
+
+    public void newGame() {
+        if ("uci".equals(this.protocol) && !startNewUciGame()) {
+            System.err.println("Engine did not become ready for the new game.");
+        }
+    }
+
+    private synchronized boolean startNewUciGame() {
+        cmd("ucinewgame");
+        CountDownLatch signal = new CountDownLatch(1);
+        readySignal = signal;
+        cmd("isready");
+        boolean ready = await(signal);
+        if (readySignal == signal) {
+            readySignal = null;
+        }
+        return ready;
+    }
+
+    private boolean await(CountDownLatch signal) {
+        try {
+            return signal.await(READY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     public void stop() {

@@ -485,31 +485,12 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         refreshLineChart();
         // 切换行棋方
         redGo = !redGo;
-        if (stopOnThreefoldRepetition()) {
-            return;
-        }
         // 触发引擎走棋
         if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue() || robotAnalysis.getValue()) {
             engineGo();
         } else {
             doOpenBook();
         }
-    }
-
-    private boolean stopOnThreefoldRepetition() {
-        if (!XiangqiUtils.isThreefoldRepetition(chessManualHandle.getFenCode(), chessManualHandle.getMoveList())) {
-            return false;
-        }
-
-        if (linkMode.getValue()) {
-            stopGraphLink();
-        } else {
-            engineStop();
-            robotRed.setValue(false);
-            robotBlack.setValue(false);
-        }
-        DialogUtils.showInfoDialog("对局结束", "检测到同一局面第三次出现，已停止自动走棋，避免循环。");
-        return true;
     }
 
     @Override
@@ -1009,6 +990,9 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         isReverse.setValue(false);
         // 引擎停止计算
         engineStop();
+        if (engine != null) {
+            engine.newGame();
+        }
         // 绘制棋盘
         board = new ChessBoard(this.canvas, prop.getBoardSize(), prop.getBoardStyle(), prop.isStepTip(), prop.isManualTip(),
                 engine != null && engine.getMultiPV() > 1, prop.isStepSound(), prop.isShowNumber(), fenCode);
@@ -1233,21 +1217,65 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
     @Override
     public void bestMove(String first, String second) {
-        if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue()) {
-            ChessBoard.Step s = board.stepForBoard(first);
+        Platform.runLater(() -> {
+            if (!(redGo && robotRed.getValue() || !redGo && robotBlack.getValue())) {
+                return;
+            }
 
-            Platform.runLater(() -> {
-                flushThinkDetails();
-                board.move(s.getStart().getX(), s.getStart().getY(), s.getEnd().getX(), s.getEnd().getY());
-                board.setTip(second, null, 1);
+            if (retryWithoutRepetition(first)) {
+                return;
+            }
 
-                goCallBack(first);
-            });
+            flushThinkDetails();
+            ChessBoard.Step step = board.stepForBoard(first);
+            String acceptedMove = board.move(step.getStart().getX(), step.getStart().getY(),
+                    step.getEnd().getX(), step.getEnd().getY());
+            if (acceptedMove == null) {
+                this.isThinking = false;
+                return;
+            }
+            board.setTip(second, null, 1);
 
             if (linkMode.getValue()) {
-                trickAutoClick(s);
+                trickAutoClick(step);
             }
+            goCallBack(first);
+        });
+    }
+
+    private boolean retryWithoutRepetition(String candidateMove) {
+        String fenCode = chessManualHandle.getFenCode();
+        List<String> moveList = chessManualHandle.getMoveList();
+        if (!XiangqiUtils.wouldCauseThreefoldRepetition(fenCode, moveList, candidateMove)) {
+            return false;
         }
+
+        List<String> alternatives = board.getTacticList(redGo);
+        alternatives.removeIf(move -> XiangqiUtils.wouldCauseThreefoldRepetition(fenCode, moveList, move));
+        if (alternatives.isEmpty()) {
+            stopWhenNoAlternativeMove();
+            return true;
+        }
+
+        tacticList = alternatives;
+        clearThinkDetails();
+        engine.setThreadNum(prop.getThreadNum());
+        engine.setHashSize(prop.getHashSize());
+        engine.setAnalysisModel(prop.getAnalysisModel(), prop.getAnalysisValue(), prop.getAnalysisDepthValue());
+        engine.analysis(fenCode, moveList, tacticList);
+        return true;
+    }
+
+    private void stopWhenNoAlternativeMove() {
+        this.isThinking = false;
+        if (linkMode.getValue()) {
+            stopGraphLink();
+        } else {
+            engineStop();
+            robotRed.setValue(false);
+            robotBlack.setValue(false);
+        }
+        DialogUtils.showInfoDialog("对局结束", "检测到循环着法，但引擎没有其它合法变招，已停止自动走棋。");
     }
 
     @Override

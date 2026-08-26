@@ -415,7 +415,8 @@ public class ChessBoard {
                 if (board[i][j] != ' ' && XiangqiUtils.isRed(board[i][j]) == redGo) {
                     for (int i2 = 0; i2 < board.length; i2++) {
                         for (int j2 = 0; j2 < board[0].length; j2++) {
-                            if ((i != i2 || j != j2) && XiangqiUtils.canGo(board, i, j, i2, j2)) {
+                            if ((i != i2 || j != j2) && XiangqiUtils.canGo(board, i, j, i2, j2)
+                                    && isLegalMove(j, i, j2, i2, redGo)) {
                                 list.add(stepForEngine(j, i, j2, i2));
                             }
                         }
@@ -424,6 +425,16 @@ public class ChessBoard {
             }
         }
         return list;
+    }
+
+    private boolean isLegalMove(int x1, int y1, int x2, int y2, boolean redGo) {
+        char captured = board[y2][x2];
+        board[y2][x2] = board[y1][x1];
+        board[y1][x1] = ' ';
+        boolean legal = !XiangqiUtils.isJiang(board, redGo);
+        board[y1][x1] = board[y2][x2];
+        board[y2][x2] = captured;
+        return legal;
     }
 
     public static String stepForEngine(int x1, int y1, int x2, int y2) {

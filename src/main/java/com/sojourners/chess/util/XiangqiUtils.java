@@ -776,6 +776,19 @@ public class XiangqiUtils {
         return currentKey != null && occurrences.get(currentKey) >= 3;
     }
 
+    public static boolean wouldCauseThreefoldRepetition(String fenCode, List<String> moves, String candidateMove) {
+        if (StringUtils.isEmpty(candidateMove)) {
+            return false;
+        }
+
+        List<String> candidateMoves = new ArrayList<>((moves == null ? 0 : moves.size()) + 1);
+        if (moves != null) {
+            candidateMoves.addAll(moves);
+        }
+        candidateMoves.add(candidateMove);
+        return isThreefoldRepetition(fenCode, candidateMoves);
+    }
+
     private static String repetitionKey(char[][] board, boolean redGo) {
         StringBuilder key = new StringBuilder(91);
         for (char[] row : board) {

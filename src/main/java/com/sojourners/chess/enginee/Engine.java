@@ -25,6 +25,7 @@ public class Engine {
 
     private AnalysisModel analysisModel;
     private long analysisValue;
+    private long analysisDepthValue;
 
     private volatile boolean threadNumChange;
     private int threadNum;
@@ -52,6 +53,7 @@ public class Engine {
 
     public enum AnalysisModel {
         FIXED_TIME,
+        FIXED_TIME_AND_STEPS,
         FIXED_STEPS,
         FIXED_NODES,
         INFINITE;
@@ -339,6 +341,8 @@ public class Engine {
         }
         if (analysisModel == AnalysisModel.FIXED_STEPS) {
             cmd("go depth " + analysisValue + (hasTactics ? sb.toString() : ""));
+        } else if (analysisModel == AnalysisModel.FIXED_TIME_AND_STEPS) {
+            cmd("go movetime " + analysisValue + " depth " + analysisDepthValue + (hasTactics ? sb.toString() : ""));
         } else if (analysisModel == AnalysisModel.FIXED_TIME) {
             cmd("go movetime " + analysisValue + (hasTactics ? sb.toString() : ""));
         } else if (analysisModel == AnalysisModel.FIXED_NODES) {
@@ -383,8 +387,13 @@ public class Engine {
     }
 
     public void setAnalysisModel(AnalysisModel model, long v) {
+        setAnalysisModel(model, v, 0);
+    }
+
+    public void setAnalysisModel(AnalysisModel model, long v, long depthValue) {
         this.analysisModel = model;
         this.analysisValue = v;
+        this.analysisDepthValue = depthValue;
     }
 
     public void close() {

@@ -353,7 +353,8 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
             }
             engine.setThreadNum(prop.getThreadNum());
             engine.setHashSize(prop.getHashSize());
-            engine.setAnalysisModel(robotAnalysis.getValue() ? Engine.AnalysisModel.INFINITE : prop.getAnalysisModel(), prop.getAnalysisValue());
+            engine.setAnalysisModel(robotAnalysis.getValue() ? Engine.AnalysisModel.INFINITE : prop.getAnalysisModel(),
+                    prop.getAnalysisValue(), prop.getAnalysisDepthValue());
             engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(), tacticList);
         }
     }
@@ -452,7 +453,8 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
         engine.setThreadNum(prop.getThreadNum());
         engine.setHashSize(prop.getHashSize());
-        engine.setAnalysisModel(robotAnalysis.getValue() ? Engine.AnalysisModel.INFINITE : prop.getAnalysisModel(), prop.getAnalysisValue());
+        engine.setAnalysisModel(robotAnalysis.getValue() ? Engine.AnalysisModel.INFINITE : prop.getAnalysisModel(),
+                prop.getAnalysisValue(), prop.getAnalysisDepthValue());
         engine.analysis(chessManualHandle.getFenCode(), chessManualHandle.getMoveList(), this.board.getBoard(), redGo);
     }
 
@@ -1315,6 +1317,8 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         switch (prop.getAnalysisModel()) {
             case Engine.AnalysisModel.FIXED_TIME:
                 return "固定时间" + prop.getAnalysisValue() / 1000d + "秒";
+            case Engine.AnalysisModel.FIXED_TIME_AND_STEPS:
+                return "固定时间" + prop.getAnalysisTimeValue() / 1000d + "秒/深度" + prop.getAnalysisDepthValue() + "层";
             case Engine.AnalysisModel.FIXED_STEPS:
                 return "固定深度" + prop.getAnalysisValue() + "层";
             case Engine.AnalysisModel.FIXED_NODES:

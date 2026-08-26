@@ -46,6 +46,9 @@ public class Properties implements Serializable {
 
     private long analysisValue;
 
+    private Long analysisTimeValue;
+    private Long analysisDepthValue;
+
     private double stageWidth;
 
     private double stageHeight;
@@ -128,6 +131,8 @@ public class Properties implements Serializable {
         this.engineName = engineName;
         this.analysisModel = analysisModel;
         this.analysisValue = analysisValue;
+        this.analysisTimeValue = analysisModel == Engine.AnalysisModel.FIXED_TIME ? analysisValue : 5000L;
+        this.analysisDepthValue = analysisModel == Engine.AnalysisModel.FIXED_STEPS ? analysisValue : 12L;
         this.stepSound = stepSound;
         this.stageWidth = stageWidth;
         this.stageHeight = stageHeight;
@@ -418,6 +423,34 @@ public class Properties implements Serializable {
 
     public void setAnalysisValue(long analysisValue) {
         this.analysisValue = analysisValue;
+    }
+
+    public long getAnalysisTimeValue() {
+        if (analysisModel == Engine.AnalysisModel.FIXED_TIME && analysisValue > 0) {
+            return analysisValue;
+        }
+        if (analysisTimeValue != null && analysisTimeValue > 0) {
+            return analysisTimeValue;
+        }
+        return 5000L;
+    }
+
+    public void setAnalysisTimeValue(long analysisTimeValue) {
+        this.analysisTimeValue = analysisTimeValue;
+    }
+
+    public long getAnalysisDepthValue() {
+        if (analysisModel == Engine.AnalysisModel.FIXED_STEPS && analysisValue > 0) {
+            return analysisValue;
+        }
+        if (analysisDepthValue != null && analysisDepthValue > 0) {
+            return analysisDepthValue;
+        }
+        return 12L;
+    }
+
+    public void setAnalysisDepthValue(long analysisDepthValue) {
+        this.analysisDepthValue = analysisDepthValue;
     }
 
     public String getEngineName() {

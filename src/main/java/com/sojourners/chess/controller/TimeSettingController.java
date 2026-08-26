@@ -7,27 +7,26 @@ import com.sojourners.chess.util.DialogUtils;
 import com.sojourners.chess.util.StringUtils;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
-import javafx.scene.control.RadioButton;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.TextField;
-import javafx.scene.control.ToggleGroup;
 
 
 public class TimeSettingController {
 
     @FXML
-    private RadioButton fixTimeButton;
+    private CheckBox fixTimeButton;
 
     @FXML
     private TextField timeText;
 
     @FXML
-    private RadioButton fixDepthButton;
+    private CheckBox fixDepthButton;
 
     @FXML
     private TextField depthText;
 
     @FXML
-    private RadioButton fixNodeButton;
+    private CheckBox fixNodeButton;
 
     @FXML
     private TextField nodeText;
@@ -54,15 +53,7 @@ public class TimeSettingController {
 
     @FXML
     void okButtonClick(ActionEvent e) {
-        if (fixDepthButton.isSelected()) {
-            String txt = depthText.getText();
-            if (!StringUtils.isPositiveInt(txt)) {
-                DialogUtils.showErrorDialog("失败", "层数错误");
-                return;
-            }
-            prop.setAnalysisModel(Engine.AnalysisModel.FIXED_STEPS);
-            prop.setAnalysisValue(Long.parseLong(txt));
-        } else if (fixNodeButton.isSelected()) {
+        if (fixNodeButton.isSelected()) {
             String txt = nodeText.getText();
             if (!StringUtils.isPositiveInt(txt)) {
                 DialogUtils.showErrorDialog("失败", "节点数错误");
@@ -70,14 +61,46 @@ public class TimeSettingController {
             }
             prop.setAnalysisModel(Engine.AnalysisModel.FIXED_NODES);
             prop.setAnalysisValue(Long.parseLong(txt));
-        } else {
+        } else if (fixTimeButton.isSelected() && fixDepthButton.isSelected()) {
+            String time = timeText.getText();
+            if (!StringUtils.isPositiveInt(time)) {
+                DialogUtils.showErrorDialog("失败", "时间错误");
+                return;
+            }
+            String depth = depthText.getText();
+            if (!StringUtils.isPositiveInt(depth)) {
+                DialogUtils.showErrorDialog("失败", "层数错误");
+                return;
+            }
+            long timeValue = Long.parseLong(time);
+            long depthValue = Long.parseLong(depth);
+            prop.setAnalysisModel(Engine.AnalysisModel.FIXED_TIME_AND_STEPS);
+            prop.setAnalysisValue(timeValue);
+            prop.setAnalysisTimeValue(timeValue);
+            prop.setAnalysisDepthValue(depthValue);
+        } else if (fixDepthButton.isSelected()) {
+            String txt = depthText.getText();
+            if (!StringUtils.isPositiveInt(txt)) {
+                DialogUtils.showErrorDialog("失败", "层数错误");
+                return;
+            }
+            long depthValue = Long.parseLong(txt);
+            prop.setAnalysisModel(Engine.AnalysisModel.FIXED_STEPS);
+            prop.setAnalysisValue(depthValue);
+            prop.setAnalysisDepthValue(depthValue);
+        } else if (fixTimeButton.isSelected()) {
             String txt = timeText.getText();
             if (!StringUtils.isPositiveInt(txt)) {
                 DialogUtils.showErrorDialog("失败", "时间错误");
                 return;
             }
+            long timeValue = Long.parseLong(txt);
             prop.setAnalysisModel(Engine.AnalysisModel.FIXED_TIME);
-            prop.setAnalysisValue(Long.parseLong(txt));
+            prop.setAnalysisValue(timeValue);
+            prop.setAnalysisTimeValue(timeValue);
+        } else {
+            DialogUtils.showErrorDialog("失败", "请至少选择一种限制");
+            return;
         }
 
         String txt = engineDelayStart.getText();
@@ -111,22 +134,38 @@ public class TimeSettingController {
 
 
     public void initialize() {
-
-        ToggleGroup group = new ToggleGroup();
-        fixTimeButton.setToggleGroup(group);
-        fixDepthButton.setToggleGroup(group);
-        fixNodeButton.setToggleGroup(group);
-
         prop = Properties.getInstance();
-        if (prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_TIME) {
+
+        fixTimeButton.selectedProperty().addListener((observable, oldValue, selected) -> {
+            if (selected) {
+                fixNodeButton.setSelected(false);
+            }
+        });
+        fixDepthButton.selectedProperty().addListener((observable, oldValue, selected) -> {
+            if (selected) {
+                fixNodeButton.setSelected(false);
+            }
+        });
+        fixNodeButton.selectedProperty().addListener((observable, oldValue, selected) -> {
+            if (selected) {
+                fixTimeButton.setSelected(false);
+                fixDepthButton.setSelected(false);
+            }
+        });
+
+        timeText.setText(String.valueOf(prop.getAnalysisTimeValue()));
+        depthText.setText(String.valueOf(prop.getAnalysisDepthValue()));
+
+        if (prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_TIME_AND_STEPS) {
             fixTimeButton.setSelected(true);
-            timeText.setText(String.valueOf(prop.getAnalysisValue()));
+            fixDepthButton.setSelected(true);
+        } else if (prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_TIME) {
+            fixTimeButton.setSelected(true);
         } else if (prop.getAnalysisModel() == Engine.AnalysisModel.FIXED_NODES) {
             fixNodeButton.setSelected(true);
             nodeText.setText(String.valueOf(prop.getAnalysisValue()));
         } else {
             fixDepthButton.setSelected(true);
-            depthText.setText(String.valueOf(prop.getAnalysisValue()));
         }
 
         engineDelayStart.setText(String.valueOf(prop.getEngineDelayStart()));

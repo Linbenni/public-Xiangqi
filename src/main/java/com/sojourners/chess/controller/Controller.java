@@ -763,16 +763,12 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         }
     }
 
-    private boolean isXqfFile(File f) {
-        return f != null && f.isFile() && "xqf".equalsIgnoreCase(PathUtils.getDotExtension(f));
-    }
-
     private File getSupportedDroppedFile(Dragboard dragboard) {
         if (!dragboard.hasFiles()) {
             return null;
         }
         return dragboard.getFiles().stream()
-                .filter(file -> isXqfFile(file) || PathUtils.isImage(file.getAbsolutePath()))
+                .filter(file -> chessManualHandle.isManualFile(file) || PathUtils.isImage(file.getAbsolutePath()))
                 .findFirst()
                 .orElse(null);
     }
@@ -783,7 +779,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
             boolean success = false;
             File f = getSupportedDroppedFile(dragboard);
             if (f != null) {
-                if (isXqfFile(f)) {
+                if (chessManualHandle.isManualFile(f)) {
                     success = chessManualHandle.openChessManualFile(f);
                 } else {
                     importFromImgFile(f);

@@ -849,8 +849,8 @@ public class ChessManualHandle {
         }
     }
 
-    private boolean isManualFile(File f) {
-        return f.isFile() && manualServices.containsKey(PathUtils.getDotExtension(f).toLowerCase());
+    public boolean isManualFile(File f) {
+        return f != null && f.isFile() && manualServices.containsKey(PathUtils.getDotExtension(f).toLowerCase());
     }
 
     private void deleteFile(File f) {

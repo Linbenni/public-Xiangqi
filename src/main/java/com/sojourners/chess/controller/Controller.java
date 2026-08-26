@@ -15,6 +15,7 @@ import com.sojourners.chess.model.ManualRecord;
 import com.sojourners.chess.model.ThinkData;
 import com.sojourners.chess.openbook.OpenBookManager;
 import com.sojourners.chess.util.*;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -49,6 +50,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.util.Callback;
+import javafx.util.Duration;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -56,10 +58,18 @@ import java.awt.image.BufferedImage;
 import java.awt.image.RenderedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCallBack {
+
+    private static final Duration THINK_DETAIL_REFRESH_INTERVAL = Duration.millis(80);
 
     @FXML
     private Canvas canvas;
@@ -190,6 +200,11 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
      */
     private List<String> tacticList;
 
+    private final Map<Integer, ThinkData> pendingThinkDetails = new ConcurrentHashMap<>();
+    private final Map<Integer, ThinkData> latestThinkDetails = new HashMap<>();
+    private final AtomicBoolean thinkDetailRefreshScheduled = new AtomicBoolean();
+    private PauseTransition thinkDetailRefreshDelay;
+
     @FXML
     public void newButtonClick(ActionEvent event) {
         if (linkMode.getValue()) {
@@ -306,6 +321,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     }
 
     private void engineStop() {
+        clearThinkDetails();
         if (engine != null) {
             engine.stop();
         }
@@ -432,6 +448,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
         // 重置变招列表
         tacticList = null;
+        clearThinkDetails();
 
         engine.setThreadNum(prop.getThreadNum());
         engine.setHashSize(prop.getHashSize());
@@ -1203,6 +1220,7 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
             ChessBoard.Step s = board.stepForBoard(first);
 
             Platform.runLater(() -> {
+                flushThinkDetails();
                 board.move(s.getStart().getX(), s.getStart().getY(), s.getEnd().getX(), s.getEnd().getY());
                 board.setTip(second, null, 1);
 
@@ -1217,29 +1235,86 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
 
     @Override
     public void thinkDetail(ThinkData td) {
-        if (redGo && robotRed.getValue() || !redGo && robotBlack.getValue() || robotAnalysis.getValue()) {
-            td.generate(redGo, isReverse.getValue(), board);
-            if (td.getValid()) {
-                Platform.runLater(() -> {
-                    listView.getItems().addFirst(td);
-                    if (listView.getItems().size() > 128) {
-                        listView.getItems().removeLast();
-                    }
+        int pv = td.getPv() == null ? 1 : td.getPv();
+        td.setPv(pv);
+        pendingThinkDetails.put(pv, td);
+        scheduleThinkDetailRefresh();
+    }
 
-                    if (prop.isLinkShowInfo()) {
-                        infoShowLabel.setText(td.getTitle() + " | " + td.getBody());
-                        setScoreStyle(infoShowLabel, td.getScore());
-                        timeShowLabel.setText(getTimeStrategyString());
-                    }
-
-                    board.setTip(td.getDetail().get(0), td.getDetail().size() > 1 ? td.getDetail().get(1) : null, td.getPv());
-
-                    if (td.getPv() == 1) {
-                        chessManualHandle.setScore(td.getScore(), td.getMate());
-                    }
-                });
-            }
+    private void scheduleThinkDetailRefresh() {
+        if (!thinkDetailRefreshScheduled.compareAndSet(false, true)) {
+            return;
         }
+        Platform.runLater(() -> {
+            if (thinkDetailRefreshDelay == null) {
+                thinkDetailRefreshDelay = new PauseTransition(THINK_DETAIL_REFRESH_INTERVAL);
+                thinkDetailRefreshDelay.setOnFinished(event -> flushThinkDetails());
+            }
+            thinkDetailRefreshDelay.playFromStart();
+        });
+    }
+
+    private void flushThinkDetails() {
+        List<ThinkData> updates = new ArrayList<>();
+        // Preserve a newer value if it replaces the one being drained for the same PV.
+        pendingThinkDetails.forEach((pv, td) -> {
+            if (pendingThinkDetails.remove(pv, td)) {
+                updates.add(td);
+            }
+        });
+        thinkDetailRefreshScheduled.set(false);
+
+        if (!updates.isEmpty() && shouldShowThinkDetails()) {
+            updates.sort(Comparator.comparingInt(ThinkData::getPv));
+            for (ThinkData td : updates) {
+                td.generate(redGo, isReverse.getValue(), board);
+                if (td.getValid()) {
+                    latestThinkDetails.put(td.getPv(), td);
+                    showThinkDetail(td);
+                }
+            }
+            refreshBoardThinkTips();
+        }
+
+        if (!pendingThinkDetails.isEmpty()) {
+            scheduleThinkDetailRefresh();
+        }
+    }
+
+    private boolean shouldShowThinkDetails() {
+        return redGo && robotRed.getValue() || !redGo && robotBlack.getValue() || robotAnalysis.getValue();
+    }
+
+    private void showThinkDetail(ThinkData td) {
+        listView.getItems().addFirst(td);
+        if (listView.getItems().size() > 128) {
+            listView.getItems().removeLast();
+        }
+
+        if (prop.isLinkShowInfo()) {
+            infoShowLabel.setText(td.getTitle() + " | " + td.getBody());
+            setScoreStyle(infoShowLabel, td.getScore());
+            timeShowLabel.setText(getTimeStrategyString());
+        }
+
+        if (td.getPv() == 1) {
+            chessManualHandle.setScore(td.getScore(), td.getMate());
+        }
+    }
+
+    private void refreshBoardThinkTips() {
+        for (int pv = 1; ; pv++) {
+            ThinkData td = latestThinkDetails.get(pv);
+            if (td == null) {
+                break;
+            }
+            board.setTip(td.getDetail().get(0), td.getDetail().size() > 1 ? td.getDetail().get(1) : null, pv);
+        }
+    }
+
+    private void clearThinkDetails() {
+        pendingThinkDetails.clear();
+        latestThinkDetails.clear();
     }
 
     private String getTimeStrategyString() {

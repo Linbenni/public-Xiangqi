@@ -6,7 +6,7 @@
 
     <groupId>com.sojourners.chess</groupId>
     <artifactId>Xiangqi</artifactId>
-    <version>1.9.2</version>
+    <version>1.9.3</version>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>

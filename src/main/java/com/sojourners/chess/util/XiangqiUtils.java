@@ -789,6 +789,99 @@ public class XiangqiUtils {
         return isThreefoldRepetition(fenCode, candidateMoves);
     }
 
+    public static boolean wouldForceThreefoldRepetition(String fenCode, List<String> moves, String candidateMove) {
+        if (StringUtils.isEmpty(fenCode) || StringUtils.isEmpty(candidateMove)) {
+            return false;
+        }
+
+        char[][] position = fenToBoard(fenCode);
+        String[] fenParts = fenCode.trim().split("\\s+");
+        boolean redGo = fenParts.length < 2 || !"b".equalsIgnoreCase(fenParts[1]);
+        if (moves != null) {
+            for (String move : moves) {
+                if (!applyEngineMove(position, move)) {
+                    return false;
+                }
+                redGo = !redGo;
+            }
+        }
+        if (!applyEngineMove(position, candidateMove)) {
+            return false;
+        }
+        redGo = !redGo;
+
+        List<String> replies = getLegalMoveList(position, redGo);
+        if (replies.isEmpty()) {
+            return false;
+        }
+
+        List<String> candidateMoves = new ArrayList<>((moves == null ? 0 : moves.size()) + 1);
+        if (moves != null) {
+            candidateMoves.addAll(moves);
+        }
+        candidateMoves.add(candidateMove);
+        for (String reply : replies) {
+            if (!wouldCauseThreefoldRepetition(fenCode, candidateMoves, reply)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static List<String> getLegalMoveList(char[][] board, boolean redGo) {
+        List<String> moves = new ArrayList<>();
+        for (int fromY = 0; fromY < board.length; fromY++) {
+            for (int fromX = 0; fromX < board[0].length; fromX++) {
+                if (board[fromY][fromX] == ' ' || isRed(board[fromY][fromX]) != redGo) {
+                    continue;
+                }
+                for (int toY = 0; toY < board.length; toY++) {
+                    for (int toX = 0; toX < board[0].length; toX++) {
+                        if ((fromX == toX && fromY == toY)
+                                || !canGo(board, fromY, fromX, toY, toX)) {
+                            continue;
+                        }
+                        char captured = board[toY][toX];
+                        board[toY][toX] = board[fromY][fromX];
+                        board[fromY][fromX] = ' ';
+                        boolean legal = !isJiang(board, redGo);
+                        board[fromY][fromX] = board[toY][toX];
+                        board[toY][toX] = captured;
+                        if (legal) {
+                            moves.add(toEngineMove(fromX, fromY, toX, toY));
+                        }
+                    }
+                }
+            }
+        }
+        return moves;
+    }
+
+    private static boolean applyEngineMove(char[][] board, String move) {
+        if (StringUtils.isEmpty(move) || move.length() != 4) {
+            return false;
+        }
+        int fromX = move.charAt(0) - 'a';
+        int fromY = 9 - (move.charAt(1) - '0');
+        int toX = move.charAt(2) - 'a';
+        int toY = 9 - (move.charAt(3) - '0');
+        if (fromX < 0 || fromX >= 9 || toX < 0 || toX >= 9
+                || fromY < 0 || fromY >= 10 || toY < 0 || toY >= 10
+                || board[fromY][fromX] == ' ') {
+            return false;
+        }
+        board[toY][toX] = board[fromY][fromX];
+        board[fromY][fromX] = ' ';
+        return true;
+    }
+
+    private static String toEngineMove(int fromX, int fromY, int toX, int toY) {
+        return new String(new char[]{
+                (char) ('a' + fromX), (char) ('0' + 9 - fromY),
+                (char) ('a' + toX), (char) ('0' + 9 - toY)
+        });
+    }
+
     private static String repetitionKey(char[][] board, boolean redGo) {
         StringBuilder key = new StringBuilder(91);
         for (char[] row : board) {

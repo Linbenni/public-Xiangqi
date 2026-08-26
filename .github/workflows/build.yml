@@ -75,6 +75,16 @@ jobs:
           Copy-Item src\main\resources\sound $package -Recurse -Force
           Copy-Item src\main\resources\ui $package -Recurse -Force
           Copy-Item target\tchess.exe "$package\tchess.exe" -Force
+          @"
+          TCHESS V1.9.8
+
+          1. XQF、CBR、PGN、TXQ 棋谱可直接拖放到整个主窗口打开。
+          2. 增加棋谱浏览、自动播放、悔棋和引擎执红/执黑快捷键。
+          3. 固定时间和固定深度可同时启用，任一限制先到即采用当前最佳着法。
+          4. 补全皮卡鱼 UCI 初始化、新局通知、就绪确认和完整棋局历史传递。
+          5. 循环将军允许前三次；准备第四次继续循环将军时，排除该着法并让当前引擎变招。
+          6. 被将军方只有唯一合法应手时允许正常应将，不再错误停止自动走棋。
+          "@ | Set-Content "$package\更新日志.txt" -Encoding utf8
 
       - name: Upload Windows portable application
         uses: actions/upload-artifact@v4
@@ -95,7 +105,8 @@ jobs:
           body: |
             以 TCHESS V1.9.3 的运行行为为基线重建，保留原有棋谱解析、引擎和界面逻辑。
             补全皮卡鱼 UCI 初始化、新局通知和就绪确认流程，并继续传递完整棋局历史。
-            引擎着法即将造成同一局面第三次出现时，不落子、不点击外部棋盘，通过 searchmoves 排除循环着法并让引擎重新计算；只有没有合法变招时才停止。
+            修正循环将军责任方判断：允许前三次连续将军；准备第四次继续循环将军时，不落子、不点击外部棋盘，通过 searchmoves 排除该着法并让当前引擎重新计算。
+            被将军方只有唯一合法应手时允许正常应将，不再错误提示“没有其它合法变招”或停止自动走棋。
             时间设置支持同时启用固定时间和固定深度，任一限制先到即采用当前最佳着法。
             Windows 便携版，支持将 XQF、CBR、PGN、TXQ 棋谱拖放到整个主窗口加载。
             增加棋谱浏览、自动播放、悔棋和引擎执红/执黑快捷键。

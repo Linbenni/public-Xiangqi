@@ -1246,15 +1246,14 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     private boolean retryWithoutRepetition(String candidateMove) {
         String fenCode = chessManualHandle.getFenCode();
         List<String> moveList = chessManualHandle.getMoveList();
-        if (!XiangqiUtils.wouldCauseThreefoldRepetition(fenCode, moveList, candidateMove)) {
+        if (!isForbiddenRepetitionMove(fenCode, moveList, candidateMove)) {
             return false;
         }
 
         List<String> alternatives = board.getTacticList(redGo);
-        alternatives.removeIf(move -> XiangqiUtils.wouldCauseThreefoldRepetition(fenCode, moveList, move));
+        alternatives.removeIf(move -> isForbiddenRepetitionMove(fenCode, moveList, move));
         if (alternatives.isEmpty()) {
-            stopWhenNoAlternativeMove();
-            return true;
+            return false;
         }
 
         tacticList = alternatives;
@@ -1266,16 +1265,9 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
         return true;
     }
 
-    private void stopWhenNoAlternativeMove() {
-        this.isThinking = false;
-        if (linkMode.getValue()) {
-            stopGraphLink();
-        } else {
-            engineStop();
-            robotRed.setValue(false);
-            robotBlack.setValue(false);
-        }
-        DialogUtils.showInfoDialog("对局结束", "检测到循环着法，但引擎没有其它合法变招，已停止自动走棋。");
+    private boolean isForbiddenRepetitionMove(String fenCode, List<String> moveList, String move) {
+        return XiangqiUtils.wouldCauseThreefoldRepetition(fenCode, moveList, move)
+                || XiangqiUtils.wouldForceThreefoldRepetition(fenCode, moveList, move);
     }
 
     @Override

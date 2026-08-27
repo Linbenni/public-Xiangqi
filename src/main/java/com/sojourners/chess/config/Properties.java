@@ -193,6 +193,11 @@ public class Properties implements Serializable {
     public void save() {
         ObjectOutputStream os = null;
         try {
+            if (engineConfigList != null) {
+                for (EngineConfig engineConfig : engineConfigList) {
+                    engineConfig.setPath(PathUtils.toPortablePath(engineConfig.getPath()));
+                }
+            }
             String path = PathUtils.getJarPath() + "properties";
             File file = new File(path);
             os = new ObjectOutputStream(new FileOutputStream(file));

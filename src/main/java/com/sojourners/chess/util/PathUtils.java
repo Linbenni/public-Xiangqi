@@ -3,6 +3,7 @@ package com.sojourners.chess.util;
 import com.sun.jna.Platform;
 
 import java.io.File;
+import java.nio.file.Path;
 
 /**
  * Path 工具类
@@ -33,6 +34,40 @@ public class PathUtils {
      */
     public static File getParentDir(String path) {
         return new File(path).getParentFile();
+    }
+
+    public static File resolveAppPath(String path) {
+        return resolveAppPath(path, new File(getJarPath()));
+    }
+
+    static File resolveAppPath(String path, File appDir) {
+        Path configuredPath = Path.of(path);
+        if (!configuredPath.isAbsolute()) {
+            configuredPath = appDir.toPath().resolve(configuredPath);
+        }
+        return configuredPath.toAbsolutePath().normalize().toFile();
+    }
+
+    public static String toPortablePath(String path) {
+        return toPortablePath(path, new File(getJarPath()));
+    }
+
+    static String toPortablePath(String path, File appDir) {
+        if (path == null || path.isBlank()) {
+            return path;
+        }
+
+        Path appPath = appDir.toPath().toAbsolutePath().normalize();
+        Path configuredPath = Path.of(path);
+        if (!configuredPath.isAbsolute()) {
+            configuredPath = appPath.resolve(configuredPath);
+        }
+        configuredPath = configuredPath.toAbsolutePath().normalize();
+
+        if (configuredPath.startsWith(appPath)) {
+            return appPath.relativize(configuredPath).toString();
+        }
+        return configuredPath.toString();
     }
 
     public static boolean isImage(String path) {

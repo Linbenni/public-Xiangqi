@@ -48,7 +48,7 @@ public class EngineAddController {
         fileChooser.setInitialDirectory(new File(PathUtils.getJarPath()));
         File file = fileChooser.showOpenDialog(App.getEngineAdd());
         if (file != null) {
-            pathText.setText(file.getPath());
+            pathText.setText(PathUtils.toPortablePath(file.getPath()));
             nameText.setText(file.getName());
             String protocol = Engine.test(file.getPath(), options = new LinkedHashMap<>());
             if (protocol == null) {
@@ -84,13 +84,14 @@ public class EngineAddController {
             alert.setHeaderText("引擎协议不正确");
             return;
         }
+        String enginePath = PathUtils.toPortablePath(pathText.getText());
         if (ec == null) {
             // 添加引擎
-            prop.getEngineConfigList().add(new EngineConfig(nameText.getText(), pathText.getText(), protocolText.getText(), options));
+            prop.getEngineConfigList().add(new EngineConfig(nameText.getText(), enginePath, protocolText.getText(), options));
         } else {
             // 编辑引擎
             ec.setName(nameText.getText());
-            ec.setPath(pathText.getText());
+            ec.setPath(enginePath);
             ec.setProtocol(protocolText.getText());
             ec.setOptions(options);
         }

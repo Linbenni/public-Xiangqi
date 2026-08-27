@@ -32,6 +32,9 @@ jobs:
       - name: Test engine option parsing
         run: java -cp "target/app.jar;target/test-classes" com.sojourners.chess.enginee.EngineOptionParsingTest
 
+      - name: Test portable engine paths
+        run: java -cp "target/app.jar;target/test-classes" com.sojourners.chess.util.PathUtilsPortableTest
+
       - name: Set up Visual C++
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -71,7 +74,7 @@ jobs:
           New-Item -ItemType Directory -Path target\upstream | Out-Null
           tar -xf $archive -C target\upstream
 
-          $package = "target\tchess_V1.9.8_repetition_reroute"
+          $package = "target\tchess_V1.9.9_portable_engine_path"
           Copy-Item target\upstream\tchess_V1.9 $package -Recurse
           Copy-Item target\app.jar "$package\app.jar" -Force
           Copy-Item src\main\resources\model $package -Recurse -Force
@@ -79,33 +82,36 @@ jobs:
           Copy-Item src\main\resources\ui $package -Recurse -Force
           Copy-Item target\tchess.exe "$package\tchess.exe" -Force
           @"
-          TCHESS V1.9.8
+          TCHESS V1.9.9
 
-          1. XQF、CBR、PGN、TXQ 棋谱可直接拖放到整个主窗口打开。
-          2. 增加棋谱浏览、自动播放、悔棋和引擎执红/执黑快捷键。
-          3. 固定时间和固定深度可同时启用，任一限制先到即采用当前最佳着法。
-          4. 补全 UCI 引擎初始化、新局通知、就绪确认和完整棋局历史传递。
-          5. 循环将军允许前三次；准备第四次继续循环将军时，排除该着法并让当前引擎变招。
-          6. 被将军方只有唯一合法应手时允许正常应将，不再错误停止自动走棋。
+          1. TCHESS 目录内的引擎自动使用相对路径，复制整个程序文件夹后无需重新设置。
+          2. XQF、CBR、PGN、TXQ 棋谱可直接拖放到整个主窗口打开。
+          3. 增加棋谱浏览、自动播放、悔棋和引擎执红/执黑快捷键。
+          4. 固定时间和固定深度可同时启用，任一限制先到即采用当前最佳着法。
+          5. 补全 UCI 引擎初始化、新局通知、就绪确认和完整棋局历史传递。
+          6. 循环将军允许前三次；准备第四次继续循环将军时，排除该着法并让当前引擎变招。
+          7. 被将军方只有唯一合法应手时允许正常应将，不再错误停止自动走棋。
           "@ | Set-Content "$package\更新日志.txt" -Encoding utf8
 
       - name: Upload Windows portable application
         uses: actions/upload-artifact@v4
         with:
-          name: tchess_V1.9.8_windows_x64
-          path: target/tchess_V1.9.8_repetition_reroute/**
+          name: tchess_V1.9.9_windows_x64
+          path: target/tchess_V1.9.9_portable_engine_path/**
           if-no-files-found: error
 
       - name: Create portable archive
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
-        run: Compress-Archive -Path target/tchess_V1.9.8_repetition_reroute/* -DestinationPath target/tchess_V1.9.8_windows_x64.zip
+        run: Compress-Archive -Path target/tchess_V1.9.9_portable_engine_path/* -DestinationPath target/tchess_V1.9.9_windows_x64.zip
 
       - name: Publish Windows release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          name: TCHESS V1.9.9
           body: |
+            TCHESS 程序目录内的引擎自动保存为相对路径，复制整个程序文件夹到其他电脑后无需重新设置；目录外的引擎仍兼容绝对路径。
             以 TCHESS V1.9.3 的运行行为为基线重建，保留原有棋谱解析、引擎和界面逻辑。
             补全 UCI 引擎初始化、新局通知和就绪确认流程，并继续传递完整棋局历史。
             修正 UCI 数值选项解析；兼容已保存的错误 min/max 数据，引擎文件移动或启动失败时显示明确原因。
@@ -116,4 +122,4 @@ jobs:
             增加棋谱浏览、自动播放、悔棋和引擎执红/执黑快捷键。
             合并高频引擎分析信息，降低界面刷新压力并改善分析时的响应速度。
             解压全部文件后，双击 tchess.exe 运行；ui 目录可继续替换棋盘界面。
-          files: target/tchess_V1.9.8_windows_x64.zip
+          files: target/tchess_V1.9.9_windows_x64.zip

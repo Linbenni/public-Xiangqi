@@ -9,7 +9,8 @@ TCHESS 是一款支持 uci 和 ucci 协议引擎的跨平台象棋界面程序�
 
 使用说明请参考 [MANUAL.md](https://github.com/Linbenni/public-Xiangqi/blob/master/MANUAL.md)，访问 [Release](https://github.com/Linbenni/public-Xiangqi/releases) 下载最新版本。
 
-# Linbenni V1.9.8 修改说明
+# Linbenni V1.9.9 修改说明
++ 位于 TCHESS 程序目录内的引擎自动保存为相对路径，复制整个程序文件夹到其他电脑后无需重新设置；目录外的引擎仍兼容绝对路径。
 + 支持将 XQF、CBR、PGN、TXQ 棋谱直接拖放到整个主窗口打开，复用菜单“棋谱 -> 打开棋谱”的原有加载逻辑。
 + 增加棋谱前进、后退、开局、终局、自动播放、悔棋及引擎执红/执黑快捷键。
 + 固定时间和固定深度可以同时启用，任一限制先到即采用当前最佳着法。

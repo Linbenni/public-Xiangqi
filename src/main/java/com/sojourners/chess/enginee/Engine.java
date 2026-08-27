@@ -6,6 +6,7 @@ import com.sojourners.chess.model.BookData;
 import com.sojourners.chess.model.EngineConfig;
 import com.sojourners.chess.model.ThinkData;
 import com.sojourners.chess.openbook.OpenBookManager;
+import com.sojourners.chess.util.PathUtils;
 import com.sojourners.chess.util.StringUtils;
 
 import java.io.*;
@@ -79,9 +80,9 @@ public class Engine {
             multiPV = 1;
         }
 
-        File engineFile = new File(ec.getPath());
+        File engineFile = PathUtils.resolveAppPath(ec.getPath());
         if (!engineFile.isFile()) {
-            throw new FileNotFoundException("引擎文件不存在：" + ec.getPath());
+            throw new FileNotFoundException("引擎文件不存在：" + engineFile.getPath());
         }
         process = Runtime.getRuntime().exec(engineFile.getAbsolutePath(), null, engineFile.getParentFile());
         reader = new BufferedReader(new InputStreamReader(process.getInputStream()));

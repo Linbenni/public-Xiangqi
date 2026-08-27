@@ -55,6 +55,8 @@ public class EngineAddController {
                 Alert alert = new Alert(Alert.AlertType.ERROR);
                 alert.setTitle("提示");
                 alert.setHeaderText("无效的引擎文件");
+                alert.showAndWait();
+                return;
             }
             protocolText.setText(protocol);
             showOptions();

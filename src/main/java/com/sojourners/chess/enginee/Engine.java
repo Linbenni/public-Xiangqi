@@ -6,7 +6,6 @@ import com.sojourners.chess.model.BookData;
 import com.sojourners.chess.model.EngineConfig;
 import com.sojourners.chess.model.ThinkData;
 import com.sojourners.chess.openbook.OpenBookManager;
-import com.sojourners.chess.util.PathUtils;
 import com.sojourners.chess.util.StringUtils;
 
 import java.io.*;
@@ -73,13 +72,18 @@ public class Engine {
 
         this.time = Integer.MAX_VALUE;
 
-        if (ec.getOptions().get("MultiPV") != null) {
-            multiPV = Integer.parseInt(ec.getOptions().get("MultiPV"));
-        } else {
+        String multiPVValue = normalizeStoredOptionValue(ec.getOptions().get("MultiPV"));
+        try {
+            multiPV = StringUtils.isEmpty(multiPVValue) ? 1 : Integer.parseInt(multiPVValue);
+        } catch (NumberFormatException e) {
             multiPV = 1;
         }
 
-        process = Runtime.getRuntime().exec(ec.getPath(), null, PathUtils.getParentDir(ec.getPath()));
+        File engineFile = new File(ec.getPath());
+        if (!engineFile.isFile()) {
+            throw new FileNotFoundException("引擎文件不存在：" + ec.getPath());
+        }
+        process = Runtime.getRuntime().exec(engineFile.getAbsolutePath(), null, engineFile.getParentFile());
         reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
         writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
 
@@ -115,13 +119,17 @@ public class Engine {
         }
 
         for (Map.Entry<String, String> entry : ec.getOptions().entrySet()) {
-            if (StringUtils.isEmpty(entry.getValue()) || "<empty>".equals(entry.getValue())) {
+            String value = normalizeStoredOptionValue(entry.getValue());
+            if (!Objects.equals(value, entry.getValue())) {
+                entry.setValue(value);
+            }
+            if (StringUtils.isEmpty(value) || "<empty>".equals(value)) {
                 continue;
             }
             if ("uci".equals(this.protocol)) {
-                cmd("setoption name " + entry.getKey() + " value " + entry.getValue());
+                cmd("setoption name " + entry.getKey() + " value " + value);
             } else if ("ucci".equals(this.protocol)) {
-                cmd("setoption " + entry.getKey() + " " + entry.getValue());
+                cmd("setoption " + entry.getKey() + " " + value);
             }
         }
 
@@ -162,22 +170,9 @@ public class Engine {
                         if ("uciok".equals(line) || "ucciok".equals(line) ) {
                             f.set(true);
                         }
-                        if (line.startsWith("option") && line.contains(" name ") && line.contains(" type ") && line.contains(" default")
-                                && !line.contains("Threads") && !line.contains("Hash")) {
-
-                            int nameIndex = line.indexOf(" name ") + 6;
-                            int typeIndex = line.indexOf(" type ", nameIndex);
-                            int defaultIndex = line.indexOf(" default", typeIndex);
-                            String key = line.substring(nameIndex, typeIndex).trim();
-                            String value = line.substring(defaultIndex + 8).trim();
-                            int varIndex = value.indexOf(" var ");
-                            if (varIndex >= 0) {
-                                value = value.substring(0, varIndex).trim();
-                            }
-                            if ("<empty>".equals(value)) {
-                                value = "";
-                            }
-                            options.put(key, value);
+                        Map.Entry<String, String> option = parseOptionDefault(line);
+                        if (option != null) {
+                            options.put(option.getKey(), option.getValue());
                         }
                     }
                 } catch (Exception e) {
@@ -397,6 +392,65 @@ public class Engine {
         if ("uci".equals(this.protocol) && !startNewUciGame()) {
             System.err.println("Engine did not become ready for the new game.");
         }
+    }
+
+    static Map.Entry<String, String> parseOptionDefault(String line) {
+        if (line == null || !line.startsWith("option") || !line.contains(" name ") || !line.contains(" type ")) {
+            return null;
+        }
+
+        int nameIndex = line.indexOf(" name ") + 6;
+        int typeIndex = line.indexOf(" type ", nameIndex);
+        int defaultIndex = line.indexOf(" default ", typeIndex);
+        if (typeIndex < 0 || defaultIndex < 0) {
+            return null;
+        }
+
+        String key = line.substring(nameIndex, typeIndex).trim();
+        if ("Threads".equals(key) || "Hash".equals(key)) {
+            return null;
+        }
+
+        String type = line.substring(typeIndex + 6, defaultIndex).trim();
+        String value = line.substring(defaultIndex + 9).trim();
+        if ("spin".equals(type)) {
+            value = valueBeforeMarker(value, " min ", " max ");
+        } else if ("combo".equals(type)) {
+            value = valueBeforeMarker(value, " var ");
+        } else if ("check".equals(type)) {
+            value = valueBeforeMarker(value, " ");
+        }
+        if ("<empty>".equals(value)) {
+            value = "";
+        }
+        return new AbstractMap.SimpleImmutableEntry<>(key, value);
+    }
+
+    static String normalizeStoredOptionValue(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        int minIndex = value.lastIndexOf(" min ");
+        if (minIndex <= 0) {
+            return value;
+        }
+        String metadata = value.substring(minIndex + 5).trim();
+        if (metadata.matches("[-+]?\\d+(?:\\s+max\\s+[-+]?\\d+)?")) {
+            return value.substring(0, minIndex).trim();
+        }
+        return value;
+    }
+
+    private static String valueBeforeMarker(String value, String... markers) {
+        int end = value.length();
+        for (String marker : markers) {
+            int index = value.indexOf(marker);
+            if (index >= 0 && index < end) {
+                end = index;
+            }
+        }
+        return value.substring(0, end).trim();
     }
 
     private synchronized boolean startNewUciGame() {

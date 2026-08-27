@@ -12,7 +12,7 @@
 + 部分引擎支持可配置棋规、nnue权重文件等，你也可以在右边列表中编辑（配置后需重新加载引擎，或重启软件生效）。引擎的自定义配置及设值说明，可以参看引擎输出的相关信息。如果你不知道某个配置的具体含义，建议不要修改，保持默认即可。    
   ![](https://github.com/sojourners/public-Xiangqi/blob/master/assets/3.png?raw=true)
 
-+ 例如皮卡鱼引擎加载后默认是亚规，如需配置成中规，在引擎配置选项里找到Repetition Rule，设置为ChineseRule，保存之后重启或重载引擎即可。  
++ 某些 UCI 引擎加载后默认是亚规，如需配置成中规，可在引擎配置选项里找到 Repetition Rule，设置为 ChineseRule，保存之后重启或重载引擎。
   ![](https://github.com/sojourners/public-Xiangqi/blob/master/assets/16.png?raw=true)
 
 ### 1.2 加载引擎

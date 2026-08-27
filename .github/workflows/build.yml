@@ -29,6 +29,9 @@ jobs:
       - name: Test repetition reroute
         run: java -cp "target/app.jar;target/test-classes" com.sojourners.chess.util.XiangqiUtilsRepetitionTest
 
+      - name: Test engine option parsing
+        run: java -cp "target/app.jar;target/test-classes" com.sojourners.chess.enginee.EngineOptionParsingTest
+
       - name: Set up Visual C++
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -81,7 +84,7 @@ jobs:
           1. XQF、CBR、PGN、TXQ 棋谱可直接拖放到整个主窗口打开。
           2. 增加棋谱浏览、自动播放、悔棋和引擎执红/执黑快捷键。
           3. 固定时间和固定深度可同时启用，任一限制先到即采用当前最佳着法。
-          4. 补全皮卡鱼 UCI 初始化、新局通知、就绪确认和完整棋局历史传递。
+          4. 补全 UCI 引擎初始化、新局通知、就绪确认和完整棋局历史传递。
           5. 循环将军允许前三次；准备第四次继续循环将军时，排除该着法并让当前引擎变招。
           6. 被将军方只有唯一合法应手时允许正常应将，不再错误停止自动走棋。
           "@ | Set-Content "$package\更新日志.txt" -Encoding utf8
@@ -104,7 +107,8 @@ jobs:
         with:
           body: |
             以 TCHESS V1.9.3 的运行行为为基线重建，保留原有棋谱解析、引擎和界面逻辑。
-            补全皮卡鱼 UCI 初始化、新局通知和就绪确认流程，并继续传递完整棋局历史。
+            补全 UCI 引擎初始化、新局通知和就绪确认流程，并继续传递完整棋局历史。
+            修正 UCI 数值选项解析；兼容已保存的错误 min/max 数据，引擎文件移动或启动失败时显示明确原因。
             修正循环将军责任方判断：允许前三次连续将军；准备第四次继续循环将军时，不落子、不点击外部棋盘，通过 searchmoves 排除该着法并让当前引擎重新计算。
             被将军方只有唯一合法应手时允许正常应将，不再错误提示“没有其它合法变招”或停止自动走棋。
             时间设置支持同时启用固定时间和固定深度，任一限制先到即采用当前最佳着法。

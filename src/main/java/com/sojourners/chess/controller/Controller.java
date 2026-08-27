@@ -1178,21 +1178,24 @@ public class Controller implements EngineCallBack, LinkerCallBack, ChessManualCa
     }
 
     private void loadEngine(String name) {
-        try {
-            if (StringUtils.isNotEmpty(name)) {
-                for (EngineConfig ec : prop.getEngineConfigList()) {
-                    if (name.equals(ec.getName())) {
+        if (StringUtils.isNotEmpty(name)) {
+            for (EngineConfig ec : prop.getEngineConfigList()) {
+                if (name.equals(ec.getName())) {
+                    try {
                         if (engine != null) {
                             engine.close();
                         }
+                        engine = null;
                         engine = new Engine(ec, this);
                         board.showMultiPV(engine.getMultiPV() > 1);
-                        return;
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        String reason = StringUtils.isEmpty(e.getMessage()) ? e.getClass().getSimpleName() : e.getMessage();
+                        DialogUtils.showErrorDialog("引擎加载失败", "无法启动所选引擎。\n" + reason + "\n请检查引擎文件路径和协议设置。");
                     }
+                    return;
                 }
             }
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 
